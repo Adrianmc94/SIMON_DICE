@@ -13,23 +13,21 @@ import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 
-    // Vistas de la IU (conectadas al activity_main.xml)
-    private lateinit var tvStatus: TextView
-    private lateinit var tvScore: TextView
-    private lateinit var btnStart: Button
-    private lateinit var colorButtons: List<Button>
+    // Vistas de la Interfaz de Usuario
+    private lateinit var tvEstado: TextView
+    private lateinit var tvPuntuacion: TextView
+    private lateinit var btnInicio: Button
+    private lateinit var botonesColor: List<Button>
 
     // Variables de Lógica del Juego
-    private val sequence = mutableListOf<Int>()
-    private var level = 0
-    private var playerSequenceIndex = 0
-    private var isSimonTurn = false
+    private val secuencia = mutableListOf<Int>()
+    private var nivel = 0
+    private var indiceSecuenciaJugador = 0
+    private var esTurnoSimon = false
 
-    // Coroutine Scope necesario para la función simonTurn() futura
-    private val gameScope = CoroutineScope(Dispatchers.Main)
+    private val ambitoJuego = CoroutineScope(Dispatchers.Main)
 
-    // Mapeo para simulación en Logcat
-    private val colorMap = mapOf(
+    private val mapaColor = mapOf(
         0 to "VERDE", 1 to "ROJO",
         2 to "AZUL", 3 to "AMARILLO"
     )
@@ -38,99 +36,131 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        setupViews()
+        configurarVistas()
 
-        btnStart.setOnClickListener {
-            if (!isSimonTurn) {
-                startGame()
+        btnInicio.setOnClickListener {
+            if (!esTurnoSimon) {
+                iniciarJuego()
             }
         }
     }
 
-    private fun setupViews() {
-        // Conectar los TextViews y el botón principal
-        tvStatus = findViewById(R.id.tvStatus)
-        tvScore = findViewById(R.id.tvScore)
-        btnStart = findViewById(R.id.btnStartRestart)
+    private fun configurarVistas() {
+        tvEstado = findViewById(R.id.tvStatus)
+        tvPuntuacion = findViewById(R.id.tvScore)
+        btnInicio = findViewById(R.id.btnStartRestart)
 
-        // Conectar los 4 botones de color
-        val btnGreen: Button = findViewById(R.id.btnGreen)
-        val btnRed: Button = findViewById(R.id.btnRed)
-        val btnBlue: Button = findViewById(R.id.btnBlue)
-        val btnYellow: Button = findViewById(R.id.btnYellow)
-        colorButtons = listOf(btnGreen, btnRed, btnBlue, btnYellow)
+        val btnVerde: Button = findViewById(R.id.btnGreen)
+        val btnRojo: Button = findViewById(R.id.btnRed)
+        val btnAzul: Button = findViewById(R.id.btnBlue)
+        val btnAmarillo: Button = findViewById(R.id.btnYellow)
+        botonesColor = listOf(btnVerde, btnRojo, btnAzul, btnAmarillo)
 
-        // Configuración inicial de la IU
-        tvScore.text = "Nivel: 0"
-        tvStatus.text = "Pulsa START / RESTART"
-        disableButtons()
+        // Configurar Listeners para los botones de color
+        botonesColor.forEachIndexed { indice, boton ->
+            boton.setOnClickListener {
+                if (!esTurnoSimon) {
+                    manejarInputJugador(indice)
+                }
+            }
+        }
+
+        tvPuntuacion.text = "Nivel: 0"
+        tvEstado.text = "Pulsa INICIO / REINICIAR"
+        deshabilitarBotones()
+        btnInicio.isEnabled = true
     }
 
-    // Lógica de Inicializar Juego
-    private fun startGame() {
-        sequence.clear()
-        level = 0
-        playerSequenceIndex = 0
-        isSimonTurn = true
-
-        btnStart.text = "REINICIAR"
-
-        simonTurn()
+    // Fase 1: Inicialización
+    private fun iniciarJuego() {
+        secuencia.clear()
+        nivel = 0
+        indiceSecuenciaJugador = 0
+        btnInicio.text = "REINICIAR"
+        btnInicio.isEnabled = false // Se deshabilita mientras Simón juega
+        turnoSimon()
     }
 
-    // Lógica del Turno de Simón
-    private fun simonTurn() = gameScope.launch {
-        isSimonTurn = true
+    // Fase 2: Turno de Simón (Reproducir Secuencia)
+    private fun turnoSimon() = ambitoJuego.launch {
+        esTurnoSimon = true
 
-        level++
-        tvScore.text = "Nivel: $level"
-        tvStatus.text = "Simón Muestra"
+        nivel++
+        tvPuntuacion.text = "Nivel: $nivel"
+        tvEstado.text = "Simón Muestra"
 
-        val newColor = (0..3).random()
-        sequence.add(newColor)
-        playerSequenceIndex = 0
+        val nuevoColor = (0..3).random()
+        secuencia.add(nuevoColor)
+        indiceSecuenciaJugador = 0
 
-        // Deshabilitar Entrada del Jugador
-        disableButtons()
+        deshabilitarBotones() // Deshabilitar Entrada del Jugador
 
         delay(500L)
 
-        // Reproducir Secuencia
-        for (color in sequence) {
-            val colorName = colorMap[color] ?: "ERROR"
-            Log.d("SIMON", "Reproduciendo: $colorName")
-            delay(500L)
+        // Reproducir Secuencia (Simulación en Logcat)
+        for (color in secuencia) {
+            val nombreColor = mapaColor[color] ?: "ERROR"
+            Log.d("SIMON", "Reproduciendo: $nombreColor")
+            delay(500L) // Duración del tono
             delay(250L) // Pausa entre tonos
         }
 
-        playerTurn()
+        turnoJugador()
     }
 
-    // Transición al Turno del Jugador
-    private fun playerTurn() {
-        isSimonTurn = false
-        tvStatus.text = "Tu Turno"
+    // Fase 3: Transición al Turno del Jugador
+    private fun turnoJugador() {
+        esTurnoSimon = false
+        tvEstado.text = "Tu Turno"
+        habilitarBotones() // Habilitar Entrada del Jugador
+        Log.d("FlujoJuego", "Turno del Jugador. Esperando Input.")
+    }
 
-        // Habilitar Entrada del Jugador
-        enableButtons()
+    // Fase 3: Verificación del Clic del Jugador
+    private fun manejarInputJugador(colorInput: Int) {
+        val colorEsperado = secuencia[indiceSecuenciaJugador]
+        val nombreColor = mapaColor[colorInput] ?: "ERROR"
 
-        Log.d("GameFlow", "Turno del Jugador. Esperando Input.")
+        // Feedback inmediato (Simulación)
+        Log.d("JUGADOR", "Input: $nombreColor. Índice: $indiceSecuenciaJugador")
+
+        if (colorInput == colorEsperado) {
+            indiceSecuenciaJugador++
+
+            if (indiceSecuenciaJugador == secuencia.size) { // Secuencia completa
+                Log.d("FlujoJuego", "Secuencia de nivel $nivel completada con éxito.")
+                turnoSimon() // Pasa al siguiente nivel
+            } else {
+                Log.d("FlujoJuego", "Acertado. Faltan ${secuencia.size - indiceSecuenciaJugador} clicks.")
+            }
+        } else {
+            finalizarJuego()
+        }
+    }
+
+    // Condición de Derrota
+    private fun finalizarJuego() {
+        // Reproducir Sonido de Error (Simulación)
+        Log.e("FlujoJuego", "¡JUEGO TERMINADO! Input incorrecto.")
+
+        tvEstado.text = "¡Has Perdido! Nivel Alcanzado: $nivel"
+        btnInicio.text = "REINICIAR"
+        btnInicio.isEnabled = true
+
+        deshabilitarBotones()
     }
 
     // Funciones Auxiliares
-    private fun disableButtons() {
-        colorButtons.forEach { it.isEnabled = false }
-        btnStart.isEnabled = false
+    private fun deshabilitarBotones() {
+        botonesColor.forEach { it.isEnabled = false }
     }
 
-    private fun enableButtons() {
-        colorButtons.forEach { it.isEnabled = true }
-        btnStart.isEnabled = false
+    private fun habilitarBotones() {
+        botonesColor.forEach { it.isEnabled = true }
     }
 
-    // Limpieza al destruir
     override fun onDestroy() {
         super.onDestroy()
-        gameScope.cancel()
+        ambitoJuego.cancel()
     }
 }
