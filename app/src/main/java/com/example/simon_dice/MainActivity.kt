@@ -2,7 +2,6 @@ package com.example.simon_dice
 
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
-import android.util.Log
 import android.widget.Button
 import android.widget.TextView
 import kotlinx.coroutines.CoroutineScope
@@ -11,31 +10,25 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import android.graphics.drawable.ColorDrawable
-import android.media.SoundPool // NUEVO
-import android.media.AudioAttributes // NUEVO
+import android.media.SoundPool
+import android.media.AudioAttributes
+import androidx.activity.viewModels // <-- IMPORTANTE: para usar by viewModels()
 
 class MainActivity : AppCompatActivity() {
 
-    // Vistas de la Interfaz de Usuario
+    // VISTAS Y VIEW MODEL
     private lateinit var tvEstado: TextView
     private lateinit var tvPuntuacion: TextView
     private lateinit var btnInicio: Button
     private lateinit var botonesColor: List<Button>
 
-    // Variables de Lógica del Juego
-    private val secuencia = mutableListOf<Int>()
-    private var nivel = 0
-    private var indiceSecuenciaJugador = 0
-    private var esTurnoSimon = false
+    // Inicialización de ViewModel (la lógica)
+    private val viewModel: SimonViewModel by viewModels()
 
+    // COROUTINE SCOPE: Para manejar el parpadeo de forma asíncrona
     private val ambitoJuego = CoroutineScope(Dispatchers.Main)
 
-    private val mapaColor = mapOf(
-        0 to "VERDE", 1 to "ROJO",
-        2 to "AZUL", 3 to "AMARILLO"
-    )
-
-    // Almacena los colores originales y poder restaurarlos después del parpadeo.
+    // Almacena los colores originales para restaurarlos después del parpadeo
     private lateinit var coloresOriginales: Map<Int, Int>
 
     // Variables para el control de Sonido
@@ -47,17 +40,13 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        configurarSonidos() // Configura SoundPool
+        configurarSonidos()
         configurarVistas()
-
-        btnInicio.setOnClickListener {
-            if (!esTurnoSimon) {
-                iniciarJuego()
-            }
-        }
+        observarViewModel() // <-- CLAVE: Activa el patrón Observer
     }
 
-    // Configura y carga los tonos del juego en SoundPool
+    // --- CONFIGURACIÓN E INICIALIZACIÓN DE LA VISTA ---
+
     private fun configurarSonidos() {
         val audioAttributes = AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_GAME)
@@ -69,12 +58,11 @@ class MainActivity : AppCompatActivity() {
             .setAudioAttributes(audioAttributes)
             .build()
 
-        // Asumiendo que tienes tono_verde, tono_rojo, tono_azul, tono_amarillo y tono_error en res/raw
+        // Carga de sonidos (IDs 0-3 para colores, idTonoError para el error)
         soundMap[0] = soundPool.load(this, R.raw.tono_verde, 1)
         soundMap[1] = soundPool.load(this, R.raw.tono_rojo, 1)
         soundMap[2] = soundPool.load(this, R.raw.tono_azul, 1)
         soundMap[3] = soundPool.load(this, R.raw.tono_amarillo, 1)
-
         idTonoError = soundPool.load(this, R.raw.tono_error, 1)
     }
 
@@ -89,7 +77,7 @@ class MainActivity : AppCompatActivity() {
         val btnAmarillo: Button = findViewById(R.id.btnYellow)
         botonesColor = listOf(btnVerde, btnRojo, btnAzul, btnAmarillo)
 
-        // FIX APLICADO: Leemos el color base de los botones usando backgroundTintList.
+        // Obtener los colores originales de los botones (FIX DE CASTING ANTERIOR)
         coloresOriginales = mapOf(
             0 to (btnVerde.backgroundTintList?.defaultColor ?: android.graphics.Color.GREEN),
             1 to (btnRojo.backgroundTintList?.defaultColor ?: android.graphics.Color.RED),
@@ -97,20 +85,63 @@ class MainActivity : AppCompatActivity() {
             3 to (btnAmarillo.backgroundTintList?.defaultColor ?: android.graphics.Color.YELLOW)
         )
 
-        // Configurar Listeners para los botones de color
+        // Configurar Listeners: solo llaman a funciones del ViewModel
+        btnInicio.setOnClickListener {
+            viewModel.iniciarJuego() // Llama a la lógica
+        }
+
         botonesColor.forEachIndexed { indice, boton ->
             boton.setOnClickListener {
-                if (!esTurnoSimon) {
-                    manejarInputJugador(indice)
+                viewModel.manejarInputJugador(indice) // Llama a la lógica
+            }
+        }
+    }
+
+    // --- IMPLEMENTACIÓN DEL PATRÓN OBSERVER ---
+
+    private fun observarViewModel() {
+        // Observa el estado del juego y lo muestra en el TextView
+        viewModel.estadoJuego.observe(this) { estado ->
+            tvEstado.text = estado
+        }
+
+        // Observa el nivel y lo muestra en el TextView
+        viewModel.nivel.observe(this) { nivel ->
+            tvPuntuacion.text = "Nivel: $nivel"
+        }
+
+        // Controla la habilitación de los botones de color
+        viewModel.botonesHabilitados.observe(this) { habilitado ->
+            if (habilitado) habilitarBotones() else deshabilitarBotones()
+        }
+
+        // Controla la habilitación del botón de inicio/reiniciar
+        viewModel.botonInicioHabilitado.observe(this) { habilitado ->
+            btnInicio.isEnabled = habilitado
+            if (habilitado) btnInicio.text = "REINICIAR" else btnInicio.text = "INICIAR"
+        }
+
+        // Observador clave: Dispara la lógica de feedback UI/Audio
+        viewModel.colorAParpadear.observe(this) { colorId ->
+            if (colorId != null) {
+                // Ejecuta la lógica de UI/Audio (que requiere Activity Context)
+                val boton = botonesColor[colorId]
+                val colorOriginal = coloresOriginales[colorId] ?: android.graphics.Color.GRAY
+
+                ambitoJuego.launch {
+                    reproducirTono(colorId)
+                    resaltarBoton(boton, colorOriginal)
                 }
             }
         }
 
-        tvPuntuacion.text = "Nivel: 0"
-        tvEstado.text = "Pulsa INICIO / REINICIAR"
-        deshabilitarBotones()
-        btnInicio.isEnabled = true
+        // Observa el evento de GAME_OVER para reproducir el sonido de error
+        viewModel.debeSonarError.observe(this) { debeSonar ->
+            if (debeSonar) reproducirError()
+        }
     }
+
+    // --- FUNCIONES DE FEEDBACK (PERMANECEN EN LA VIEW) ---
 
     // Función de sonido
     private fun reproducirTono(colorId: Int) {
@@ -125,7 +156,7 @@ class MainActivity : AppCompatActivity() {
         soundPool.play(idTonoError, 1f, 1f, 1, 0, 1f)
     }
 
-    // FUNCIÓN DE FEEDBACK VISUAL
+    // FUNCIÓN DE FEEDBACK VISUAL (requiere Coroutine)
     private suspend fun resaltarBoton(boton: Button, colorOriginal: Int) {
         boton.setBackgroundColor(android.graphics.Color.WHITE)
 
@@ -135,92 +166,7 @@ class MainActivity : AppCompatActivity() {
         boton.setBackgroundColor(colorOriginal)
     }
 
-    // Fase 1: Inicialización
-    private fun iniciarJuego() {
-        secuencia.clear()
-        nivel = 0
-        indiceSecuenciaJugador = 0
-        btnInicio.text = "REINICIAR"
-        btnInicio.isEnabled = false
-        turnoSimon()
-    }
-
-    // Fase 2: Turno de Simón
-    private fun turnoSimon() = ambitoJuego.launch {
-        esTurnoSimon = true
-
-        nivel++
-        tvPuntuacion.text = "Nivel: $nivel"
-        tvEstado.text = "Simón Muestra"
-
-        val nuevoColor = (0..3).random()
-        secuencia.add(nuevoColor)
-        indiceSecuenciaJugador = 0
-
-        deshabilitarBotones()
-
-        delay(500L)
-
-        // Reproducir Secuencia con Feedback Visual y Auditivo
-        for (color in secuencia) {
-            val botonActual = botonesColor[color]
-            val colorOriginal = coloresOriginales[color] ?: android.graphics.Color.GRAY
-
-            reproducirTono(color) //
-            resaltarBoton(botonActual, colorOriginal)
-
-            delay(250L) // Pausa entre tonos
-        }
-
-        turnoJugador()
-    }
-
-    // Fase 3: Transición al Turno del Jugador
-    private fun turnoJugador() {
-        esTurnoSimon = false
-        tvEstado.text = "Tu Turno"
-        habilitarBotones()
-        Log.d("FlujoJuego", "Turno del Jugador. Esperando Input.")
-    }
-
-    // Fase 3: Verificación del Clic del Jugador
-    private fun manejarInputJugador(colorInput: Int) {
-        val colorEsperado = secuencia[indiceSecuenciaJugador]
-        val botonClicado = botonesColor[colorInput]
-        val colorOriginal = coloresOriginales[colorInput] ?: android.graphics.Color.GRAY
-
-        // Ejecutar el resaltado y sonido de forma asíncrona
-        ambitoJuego.launch {
-            reproducirTono(colorInput) // LLAMADA AL SONIDO
-            resaltarBoton(botonClicado, colorOriginal)
-        }
-
-        if (colorInput == colorEsperado) {
-            indiceSecuenciaJugador++
-
-            if (indiceSecuenciaJugador == secuencia.size) { // Secuencia completa
-                Log.d("FlujoJuego", "Secuencia de nivel $nivel completada con éxito.")
-                turnoSimon()
-            } else {
-                Log.d("FlujoJuego", "Acertado. Faltan ${secuencia.size - indiceSecuenciaJugador} clicks.")
-            }
-        } else {
-            finalizarJuego()
-        }
-    }
-
-    // Condición de Derrota
-    private fun finalizarJuego() {
-        reproducirError()
-
-        tvEstado.text = "¡Has Perdido! Nivel Alcanzado: $nivel"
-        btnInicio.text = "REINICIAR"
-        btnInicio.isEnabled = true
-
-        deshabilitarBotones()
-    }
-
-    // Funciones Auxiliares
+    // Funciones Auxiliares de UI
     private fun deshabilitarBotones() {
         botonesColor.forEach { it.isEnabled = false }
     }
@@ -229,10 +175,11 @@ class MainActivity : AppCompatActivity() {
         botonesColor.forEach { it.isEnabled = true }
     }
 
+    // --- LIMPIEZA DE RECURSOS ---
+
     override fun onDestroy() {
         super.onDestroy()
-        ambitoJuego.cancel()
-        soundPool.release() // Libera los recursos de sonido
+        ambitoJuego.cancel() // Cancelar coroutines de parpadeo
+        soundPool.release() // Liberar recursos de sonido
     }
-
 }
