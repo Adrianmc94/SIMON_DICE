@@ -10,6 +10,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import android.graphics.drawable.ColorDrawable
+import android.media.SoundPool // NUEVO
+import android.media.AudioAttributes // NUEVO
 
 class MainActivity : AppCompatActivity() {
 
@@ -32,10 +35,19 @@ class MainActivity : AppCompatActivity() {
         2 to "AZUL", 3 to "AMARILLO"
     )
 
+    // Almacena los colores originales y poder restaurarlos después del parpadeo.
+    private lateinit var coloresOriginales: Map<Int, Int>
+
+    // Variables para el control de Sonido
+    private lateinit var soundPool: SoundPool
+    private val soundMap = mutableMapOf<Int, Int>()
+    private var idTonoError: Int = 0
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        configurarSonidos() // Configura SoundPool
         configurarVistas()
 
         btnInicio.setOnClickListener {
@@ -43,6 +55,27 @@ class MainActivity : AppCompatActivity() {
                 iniciarJuego()
             }
         }
+    }
+
+    // Configura y carga los tonos del juego en SoundPool
+    private fun configurarSonidos() {
+        val audioAttributes = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_GAME)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build()
+
+        soundPool = SoundPool.Builder()
+            .setMaxStreams(5)
+            .setAudioAttributes(audioAttributes)
+            .build()
+
+        // Asumiendo que tienes tono_verde, tono_rojo, tono_azul, tono_amarillo y tono_error en res/raw
+        soundMap[0] = soundPool.load(this, R.raw.tono_verde, 1)
+        soundMap[1] = soundPool.load(this, R.raw.tono_rojo, 1)
+        soundMap[2] = soundPool.load(this, R.raw.tono_azul, 1)
+        soundMap[3] = soundPool.load(this, R.raw.tono_amarillo, 1)
+
+        idTonoError = soundPool.load(this, R.raw.tono_error, 1)
     }
 
     private fun configurarVistas() {
@@ -55,6 +88,14 @@ class MainActivity : AppCompatActivity() {
         val btnAzul: Button = findViewById(R.id.btnBlue)
         val btnAmarillo: Button = findViewById(R.id.btnYellow)
         botonesColor = listOf(btnVerde, btnRojo, btnAzul, btnAmarillo)
+
+        // FIX APLICADO: Leemos el color base de los botones usando backgroundTintList.
+        coloresOriginales = mapOf(
+            0 to (btnVerde.backgroundTintList?.defaultColor ?: android.graphics.Color.GREEN),
+            1 to (btnRojo.backgroundTintList?.defaultColor ?: android.graphics.Color.RED),
+            2 to (btnAzul.backgroundTintList?.defaultColor ?: android.graphics.Color.BLUE),
+            3 to (btnAmarillo.backgroundTintList?.defaultColor ?: android.graphics.Color.YELLOW)
+        )
 
         // Configurar Listeners para los botones de color
         botonesColor.forEachIndexed { indice, boton ->
@@ -71,17 +112,40 @@ class MainActivity : AppCompatActivity() {
         btnInicio.isEnabled = true
     }
 
+    // Función de sonido
+    private fun reproducirTono(colorId: Int) {
+        val soundId = soundMap[colorId]
+        if (soundId != null) {
+            soundPool.play(soundId, 1f, 1f, 1, 0, 1f)
+        }
+    }
+
+    // Función de sonido de error
+    private fun reproducirError() {
+        soundPool.play(idTonoError, 1f, 1f, 1, 0, 1f)
+    }
+
+    // FUNCIÓN DE FEEDBACK VISUAL
+    private suspend fun resaltarBoton(boton: Button, colorOriginal: Int) {
+        boton.setBackgroundColor(android.graphics.Color.WHITE)
+
+        delay(500L)
+
+        // Restaurar el color original
+        boton.setBackgroundColor(colorOriginal)
+    }
+
     // Fase 1: Inicialización
     private fun iniciarJuego() {
         secuencia.clear()
         nivel = 0
         indiceSecuenciaJugador = 0
         btnInicio.text = "REINICIAR"
-        btnInicio.isEnabled = false // Se deshabilita mientras Simón juega
+        btnInicio.isEnabled = false
         turnoSimon()
     }
 
-    // Fase 2: Turno de Simón (Reproducir Secuencia)
+    // Fase 2: Turno de Simón
     private fun turnoSimon() = ambitoJuego.launch {
         esTurnoSimon = true
 
@@ -93,15 +157,18 @@ class MainActivity : AppCompatActivity() {
         secuencia.add(nuevoColor)
         indiceSecuenciaJugador = 0
 
-        deshabilitarBotones() // Deshabilitar Entrada del Jugador
+        deshabilitarBotones()
 
         delay(500L)
 
-        // Reproducir Secuencia (Simulación en Logcat)
+        // Reproducir Secuencia con Feedback Visual y Auditivo
         for (color in secuencia) {
-            val nombreColor = mapaColor[color] ?: "ERROR"
-            Log.d("SIMON", "Reproduciendo: $nombreColor")
-            delay(500L) // Duración del tono
+            val botonActual = botonesColor[color]
+            val colorOriginal = coloresOriginales[color] ?: android.graphics.Color.GRAY
+
+            reproducirTono(color) //
+            resaltarBoton(botonActual, colorOriginal)
+
             delay(250L) // Pausa entre tonos
         }
 
@@ -112,24 +179,28 @@ class MainActivity : AppCompatActivity() {
     private fun turnoJugador() {
         esTurnoSimon = false
         tvEstado.text = "Tu Turno"
-        habilitarBotones() // Habilitar Entrada del Jugador
+        habilitarBotones()
         Log.d("FlujoJuego", "Turno del Jugador. Esperando Input.")
     }
 
     // Fase 3: Verificación del Clic del Jugador
     private fun manejarInputJugador(colorInput: Int) {
         val colorEsperado = secuencia[indiceSecuenciaJugador]
-        val nombreColor = mapaColor[colorInput] ?: "ERROR"
+        val botonClicado = botonesColor[colorInput]
+        val colorOriginal = coloresOriginales[colorInput] ?: android.graphics.Color.GRAY
 
-        // Feedback inmediato (Simulación)
-        Log.d("JUGADOR", "Input: $nombreColor. Índice: $indiceSecuenciaJugador")
+        // Ejecutar el resaltado y sonido de forma asíncrona
+        ambitoJuego.launch {
+            reproducirTono(colorInput) // LLAMADA AL SONIDO
+            resaltarBoton(botonClicado, colorOriginal)
+        }
 
         if (colorInput == colorEsperado) {
             indiceSecuenciaJugador++
 
             if (indiceSecuenciaJugador == secuencia.size) { // Secuencia completa
                 Log.d("FlujoJuego", "Secuencia de nivel $nivel completada con éxito.")
-                turnoSimon() // Pasa al siguiente nivel
+                turnoSimon()
             } else {
                 Log.d("FlujoJuego", "Acertado. Faltan ${secuencia.size - indiceSecuenciaJugador} clicks.")
             }
@@ -140,8 +211,7 @@ class MainActivity : AppCompatActivity() {
 
     // Condición de Derrota
     private fun finalizarJuego() {
-        // Reproducir Sonido de Error (Simulación)
-        Log.e("FlujoJuego", "¡JUEGO TERMINADO! Input incorrecto.")
+        reproducirError()
 
         tvEstado.text = "¡Has Perdido! Nivel Alcanzado: $nivel"
         btnInicio.text = "REINICIAR"
@@ -162,5 +232,7 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         ambitoJuego.cancel()
+        soundPool.release() // Libera los recursos de sonido
     }
+
 }
