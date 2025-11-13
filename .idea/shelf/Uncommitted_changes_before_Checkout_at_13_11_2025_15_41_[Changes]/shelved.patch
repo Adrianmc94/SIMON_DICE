@@ -1,0 +1,352 @@
+Index: app/build.gradle.kts
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>plugins {\r\n    alias(libs.plugins.android.application)\r\n    alias(libs.plugins.kotlin.android)\r\n}\r\n\r\nandroid {\r\n    namespace = \"com.example.simon_dice\"\r\n    compileSdk = 36\r\n\r\n    defaultConfig {\r\n        applicationId = \"com.example.simon_dice\"\r\n        minSdk = 24\r\n        targetSdk = 36\r\n        versionCode = 1\r\n        versionName = \"1.0\"\r\n\r\n        testInstrumentationRunner = \"androidx.test.runner.AndroidJUnitRunner\"\r\n    }\r\n\r\n    buildTypes {\r\n        release {\r\n            isMinifyEnabled = false\r\n            proguardFiles(\r\n                getDefaultProguardFile(\"proguard-android-optimize.txt\"),\r\n                \"proguard-rules.pro\"\r\n            )\r\n        }\r\n    }\r\n    compileOptions {\r\n        sourceCompatibility = JavaVersion.VERSION_11\r\n        targetCompatibility = JavaVersion.VERSION_11\r\n    }\r\n    kotlinOptions {\r\n        jvmTarget = \"11\"\r\n    }\r\n}\r\n\r\ndependencies {\r\n\r\n    implementation(libs.androidx.core.ktx)\r\n    implementation(libs.androidx.appcompat)\r\n    testImplementation(libs.junit)\r\n    androidTestImplementation(libs.androidx.junit)\r\n    androidTestImplementation(libs.androidx.espresso.core)\r\n    implementation(\"androidx.constraintlayout:constraintlayout:2.1.4\")\r\n    implementation(\"org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3\")\r\n    implementation(\"org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3\")\r\n    implementation(\"androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0\")\r\n    implementation(\"androidx.lifecycle:lifecycle-livedata-ktx:2.7.0\")\r\n    implementation(\"androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0\")\r\n    implementation(\"androidx.lifecycle:lifecycle-livedata-ktx:2.7.0\")\r\n}
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+--- a/app/build.gradle.kts	(revision 4abda2eb48f40d937f7a9f00093ab2e625343b3c)
++++ b/app/build.gradle.kts	(date 1763044439696)
+@@ -45,8 +45,7 @@
+     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
+     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
+     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+-    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0")
+-    implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.7.0")
++    implementation("androidx.activity:activity-ktx:1.9.0")
+     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0")
+     implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.7.0")
+ }
+\ No newline at end of file
+Index: app/src/main/java/com/example/simon_dice/MainActivity.kt
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>package com.example.simon_dice\r\n\r\nimport androidx.appcompat.app.AppCompatActivity\r\nimport android.os.Bundle\r\nimport android.widget.Button\r\nimport android.widget.TextView\r\nimport kotlinx.coroutines.CoroutineScope\r\nimport kotlinx.coroutines.Dispatchers\r\nimport kotlinx.coroutines.cancel\r\nimport kotlinx.coroutines.delay\r\nimport kotlinx.coroutines.launch\r\nimport android.graphics.drawable.ColorDrawable\r\nimport android.media.SoundPool\r\nimport android.media.AudioAttributes\r\nimport androidx.activity.viewModels // <-- IMPORTANTE: para usar by viewModels()\r\n\r\nclass MainActivity : AppCompatActivity() {\r\n\r\n    // VISTAS Y VIEW MODEL\r\n    private lateinit var tvEstado: TextView\r\n    private lateinit var tvPuntuacion: TextView\r\n    private lateinit var btnInicio: Button\r\n    private lateinit var botonesColor: List<Button>\r\n\r\n    // Inicialización de ViewModel (la lógica)\r\n    private val viewModel: SimonViewModel by viewModels()\r\n\r\n    // COROUTINE SCOPE: Para manejar el parpadeo de forma asíncrona\r\n    private val ambitoJuego = CoroutineScope(Dispatchers.Main)\r\n\r\n    // Almacena los colores originales para restaurarlos después del parpadeo\r\n    private lateinit var coloresOriginales: Map<Int, Int>\r\n\r\n    // Variables para el control de Sonido\r\n    private lateinit var soundPool: SoundPool\r\n    private val soundMap = mutableMapOf<Int, Int>()\r\n    private var idTonoError: Int = 0\r\n\r\n    override fun onCreate(savedInstanceState: Bundle?) {\r\n        super.onCreate(savedInstanceState)\r\n        setContentView(R.layout.activity_main)\r\n\r\n        configurarSonidos()\r\n        configurarVistas()\r\n        observarViewModel() // <-- CLAVE: Activa el patrón Observer\r\n    }\r\n\r\n    // --- CONFIGURACIÓN E INICIALIZACIÓN DE LA VISTA ---\r\n\r\n    private fun configurarSonidos() {\r\n        val audioAttributes = AudioAttributes.Builder()\r\n            .setUsage(AudioAttributes.USAGE_GAME)\r\n            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)\r\n            .build()\r\n\r\n        soundPool = SoundPool.Builder()\r\n            .setMaxStreams(5)\r\n            .setAudioAttributes(audioAttributes)\r\n            .build()\r\n\r\n        // Carga de sonidos (IDs 0-3 para colores, idTonoError para el error)\r\n        soundMap[0] = soundPool.load(this, R.raw.tono_verde, 1)\r\n        soundMap[1] = soundPool.load(this, R.raw.tono_rojo, 1)\r\n        soundMap[2] = soundPool.load(this, R.raw.tono_azul, 1)\r\n        soundMap[3] = soundPool.load(this, R.raw.tono_amarillo, 1)\r\n        idTonoError = soundPool.load(this, R.raw.tono_error, 1)\r\n    }\r\n\r\n    private fun configurarVistas() {\r\n        tvEstado = findViewById(R.id.tvStatus)\r\n        tvPuntuacion = findViewById(R.id.tvScore)\r\n        btnInicio = findViewById(R.id.btnStartRestart)\r\n\r\n        val btnVerde: Button = findViewById(R.id.btnGreen)\r\n        val btnRojo: Button = findViewById(R.id.btnRed)\r\n        val btnAzul: Button = findViewById(R.id.btnBlue)\r\n        val btnAmarillo: Button = findViewById(R.id.btnYellow)\r\n        botonesColor = listOf(btnVerde, btnRojo, btnAzul, btnAmarillo)\r\n\r\n        // Obtener los colores originales de los botones (FIX DE CASTING ANTERIOR)\r\n        coloresOriginales = mapOf(\r\n            0 to (btnVerde.backgroundTintList?.defaultColor ?: android.graphics.Color.GREEN),\r\n            1 to (btnRojo.backgroundTintList?.defaultColor ?: android.graphics.Color.RED),\r\n            2 to (btnAzul.backgroundTintList?.defaultColor ?: android.graphics.Color.BLUE),\r\n            3 to (btnAmarillo.backgroundTintList?.defaultColor ?: android.graphics.Color.YELLOW)\r\n        )\r\n\r\n        // Configurar Listeners: solo llaman a funciones del ViewModel\r\n        btnInicio.setOnClickListener {\r\n            viewModel.iniciarJuego() // Llama a la lógica\r\n        }\r\n\r\n        botonesColor.forEachIndexed { indice, boton ->\r\n            boton.setOnClickListener {\r\n                viewModel.manejarInputJugador(indice) // Llama a la lógica\r\n            }\r\n        }\r\n    }\r\n\r\n    // --- IMPLEMENTACIÓN DEL PATRÓN OBSERVER ---\r\n\r\n    private fun observarViewModel() {\r\n        // Observa el estado del juego y lo muestra en el TextView\r\n        viewModel.estadoJuego.observe(this) { estado ->\r\n            tvEstado.text = estado\r\n        }\r\n\r\n        // Observa el nivel y lo muestra en el TextView\r\n        viewModel.nivel.observe(this) { nivel ->\r\n            tvPuntuacion.text = \"Nivel: $nivel\"\r\n        }\r\n\r\n        // Controla la habilitación de los botones de color\r\n        viewModel.botonesHabilitados.observe(this) { habilitado ->\r\n            if (habilitado) habilitarBotones() else deshabilitarBotones()\r\n        }\r\n\r\n        // Controla la habilitación del botón de inicio/reiniciar\r\n        viewModel.botonInicioHabilitado.observe(this) { habilitado ->\r\n            btnInicio.isEnabled = habilitado\r\n            if (habilitado) btnInicio.text = \"REINICIAR\" else btnInicio.text = \"INICIAR\"\r\n        }\r\n\r\n        // Observador clave: Dispara la lógica de feedback UI/Audio\r\n        viewModel.colorAParpadear.observe(this) { colorId ->\r\n            if (colorId != null) {\r\n                // Ejecuta la lógica de UI/Audio (que requiere Activity Context)\r\n                val boton = botonesColor[colorId]\r\n                val colorOriginal = coloresOriginales[colorId] ?: android.graphics.Color.GRAY\r\n\r\n                ambitoJuego.launch {\r\n                    reproducirTono(colorId)\r\n                    resaltarBoton(boton, colorOriginal)\r\n                }\r\n            }\r\n        }\r\n\r\n        // Observa el evento de GAME_OVER para reproducir el sonido de error\r\n        viewModel.debeSonarError.observe(this) { debeSonar ->\r\n            if (debeSonar) reproducirError()\r\n        }\r\n    }\r\n\r\n    // --- FUNCIONES DE FEEDBACK (PERMANECEN EN LA VIEW) ---\r\n\r\n    // Función de sonido\r\n    private fun reproducirTono(colorId: Int) {\r\n        val soundId = soundMap[colorId]\r\n        if (soundId != null) {\r\n            soundPool.play(soundId, 1f, 1f, 1, 0, 1f)\r\n        }\r\n    }\r\n\r\n    // Función de sonido de error\r\n    private fun reproducirError() {\r\n        soundPool.play(idTonoError, 1f, 1f, 1, 0, 1f)\r\n    }\r\n\r\n    // FUNCIÓN DE FEEDBACK VISUAL (requiere Coroutine)\r\n    private suspend fun resaltarBoton(boton: Button, colorOriginal: Int) {\r\n        boton.setBackgroundColor(android.graphics.Color.WHITE)\r\n\r\n        delay(500L)\r\n\r\n        // Restaurar el color original\r\n        boton.setBackgroundColor(colorOriginal)\r\n    }\r\n\r\n    // Funciones Auxiliares de UI\r\n    private fun deshabilitarBotones() {\r\n        botonesColor.forEach { it.isEnabled = false }\r\n    }\r\n\r\n    private fun habilitarBotones() {\r\n        botonesColor.forEach { it.isEnabled = true }\r\n    }\r\n\r\n    // --- LIMPIEZA DE RECURSOS ---\r\n\r\n    override fun onDestroy() {\r\n        super.onDestroy()\r\n        ambitoJuego.cancel() // Cancelar coroutines de parpadeo\r\n        soundPool.release() // Liberar recursos de sonido\r\n    }\r\n}
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/app/src/main/java/com/example/simon_dice/MainActivity.kt b/app/src/main/java/com/example/simon_dice/MainActivity.kt
+--- a/app/src/main/java/com/example/simon_dice/MainActivity.kt	(revision 4abda2eb48f40d937f7a9f00093ab2e625343b3c)
++++ b/app/src/main/java/com/example/simon_dice/MainActivity.kt	(date 1763044586667)
+@@ -9,29 +9,27 @@
+ import kotlinx.coroutines.cancel
+ import kotlinx.coroutines.delay
+ import kotlinx.coroutines.launch
+-import android.graphics.drawable.ColorDrawable
+ import android.media.SoundPool
+ import android.media.AudioAttributes
+-import androidx.activity.viewModels // <-- IMPORTANTE: para usar by viewModels()
++import androidx.activity.viewModels
++import android.content.res.ColorStateList // Import necesario para ColorStateList
+ 
+ class MainActivity : AppCompatActivity() {
+ 
+-    // VISTAS Y VIEW MODEL
++    // Vistas y ViewModel
+     private lateinit var tvEstado: TextView
+     private lateinit var tvPuntuacion: TextView
+     private lateinit var btnInicio: Button
+     private lateinit var botonesColor: List<Button>
+ 
+-    // Inicialización de ViewModel (la lógica)
+     private val viewModel: SimonViewModel by viewModels()
+ 
+-    // COROUTINE SCOPE: Para manejar el parpadeo de forma asíncrona
+     private val ambitoJuego = CoroutineScope(Dispatchers.Main)
+ 
+-    // Almacena los colores originales para restaurarlos después del parpadeo
+-    private lateinit var coloresOriginales: Map<Int, Int>
++    // Almacena el ColorStateList original para restaurar el tinte
++    private lateinit var coloresOriginales: Map<Int, ColorStateList?>
+ 
+-    // Variables para el control de Sonido
++    // Variables de sonido
+     private lateinit var soundPool: SoundPool
+     private val soundMap = mutableMapOf<Int, Int>()
+     private var idTonoError: Int = 0
+@@ -42,10 +40,8 @@
+ 
+         configurarSonidos()
+         configurarVistas()
+-        observarViewModel() // <-- CLAVE: Activa el patrón Observer
++        observarViewModel()
+     }
+-
+-    // --- CONFIGURACIÓN E INICIALIZACIÓN DE LA VISTA ---
+ 
+     private fun configurarSonidos() {
+         val audioAttributes = AudioAttributes.Builder()
+@@ -58,7 +54,7 @@
+             .setAudioAttributes(audioAttributes)
+             .build()
+ 
+-        // Carga de sonidos (IDs 0-3 para colores, idTonoError para el error)
++        // Carga de sonidos
+         soundMap[0] = soundPool.load(this, R.raw.tono_verde, 1)
+         soundMap[1] = soundPool.load(this, R.raw.tono_rojo, 1)
+         soundMap[2] = soundPool.load(this, R.raw.tono_azul, 1)
+@@ -77,73 +73,66 @@
+         val btnAmarillo: Button = findViewById(R.id.btnYellow)
+         botonesColor = listOf(btnVerde, btnRojo, btnAzul, btnAmarillo)
+ 
+-        // Obtener los colores originales de los botones (FIX DE CASTING ANTERIOR)
++        // Almacenar el ColorStateList original de cada botón
+         coloresOriginales = mapOf(
+-            0 to (btnVerde.backgroundTintList?.defaultColor ?: android.graphics.Color.GREEN),
+-            1 to (btnRojo.backgroundTintList?.defaultColor ?: android.graphics.Color.RED),
+-            2 to (btnAzul.backgroundTintList?.defaultColor ?: android.graphics.Color.BLUE),
+-            3 to (btnAmarillo.backgroundTintList?.defaultColor ?: android.graphics.Color.YELLOW)
++            0 to btnVerde.backgroundTintList,
++            1 to btnRojo.backgroundTintList,
++            2 to btnAzul.backgroundTintList,
++            3 to btnAmarillo.backgroundTintList
+         )
+ 
+-        // Configurar Listeners: solo llaman a funciones del ViewModel
+         btnInicio.setOnClickListener {
+-            viewModel.iniciarJuego() // Llama a la lógica
++            viewModel.iniciarJuego()
+         }
+ 
+         botonesColor.forEachIndexed { indice, boton ->
+             boton.setOnClickListener {
+-                viewModel.manejarInputJugador(indice) // Llama a la lógica
++                viewModel.manejarInputJugador(indice)
+             }
+         }
+     }
+-
+-    // --- IMPLEMENTACIÓN DEL PATRÓN OBSERVER ---
+ 
+     private fun observarViewModel() {
+-        // Observa el estado del juego y lo muestra en el TextView
++        // Observa el estado del juego
+         viewModel.estadoJuego.observe(this) { estado ->
+             tvEstado.text = estado
+         }
+ 
+-        // Observa el nivel y lo muestra en el TextView
++        // Observa el nivel
+         viewModel.nivel.observe(this) { nivel ->
+             tvPuntuacion.text = "Nivel: $nivel"
+         }
+ 
+-        // Controla la habilitación de los botones de color
++        // Controla la habilitación de los botones
+         viewModel.botonesHabilitados.observe(this) { habilitado ->
+             if (habilitado) habilitarBotones() else deshabilitarBotones()
+         }
+ 
+-        // Controla la habilitación del botón de inicio/reiniciar
++        // Controla el botón de inicio
+         viewModel.botonInicioHabilitado.observe(this) { habilitado ->
+             btnInicio.isEnabled = habilitado
+             if (habilitado) btnInicio.text = "REINICIAR" else btnInicio.text = "INICIAR"
+         }
+ 
+-        // Observador clave: Dispara la lógica de feedback UI/Audio
++        // Dispara la acción de feedback (parpadeo y sonido)
+         viewModel.colorAParpadear.observe(this) { colorId ->
+             if (colorId != null) {
+-                // Ejecuta la lógica de UI/Audio (que requiere Activity Context)
+                 val boton = botonesColor[colorId]
+-                val colorOriginal = coloresOriginales[colorId] ?: android.graphics.Color.GRAY
++                val colorOriginalTintList = coloresOriginales[colorId]
+ 
+                 ambitoJuego.launch {
+                     reproducirTono(colorId)
+-                    resaltarBoton(boton, colorOriginal)
++                    resaltarBoton(boton, colorOriginalTintList)
+                 }
+             }
+         }
+ 
+-        // Observa el evento de GAME_OVER para reproducir el sonido de error
++        // Reproduce el sonido de error
+         viewModel.debeSonarError.observe(this) { debeSonar ->
+             if (debeSonar) reproducirError()
+         }
+     }
+ 
+-    // --- FUNCIONES DE FEEDBACK (PERMANECEN EN LA VIEW) ---
+-
+-    // Función de sonido
+     private fun reproducirTono(colorId: Int) {
+         val soundId = soundMap[colorId]
+         if (soundId != null) {
+@@ -151,22 +140,20 @@
+         }
+     }
+ 
+-    // Función de sonido de error
+     private fun reproducirError() {
+         soundPool.play(idTonoError, 1f, 1f, 1, 0, 1f)
+     }
+ 
+-    // FUNCIÓN DE FEEDBACK VISUAL (requiere Coroutine)
+-    private suspend fun resaltarBoton(boton: Button, colorOriginal: Int) {
+-        boton.setBackgroundColor(android.graphics.Color.WHITE)
++    private suspend fun resaltarBoton(boton: Button, colorOriginalTintList: ColorStateList?) {
++        // Aplica tinte BLANCO para el parpadeo
++        boton.backgroundTintList = ColorStateList.valueOf(android.graphics.Color.WHITE)
+ 
+         delay(500L)
+ 
+-        // Restaurar el color original
+-        boton.setBackgroundColor(colorOriginal)
++        // Restaura el ColorStateList original
++        boton.backgroundTintList = colorOriginalTintList
+     }
+ 
+-    // Funciones Auxiliares de UI
+     private fun deshabilitarBotones() {
+         botonesColor.forEach { it.isEnabled = false }
+     }
+@@ -175,11 +162,9 @@
+         botonesColor.forEach { it.isEnabled = true }
+     }
+ 
+-    // --- LIMPIEZA DE RECURSOS ---
+-
+     override fun onDestroy() {
+         super.onDestroy()
+-        ambitoJuego.cancel() // Cancelar coroutines de parpadeo
+-        soundPool.release() // Liberar recursos de sonido
++        ambitoJuego.cancel() // Limpia Coroutines
++        soundPool.release() // Libera SoundPool
+     }
+ }
+\ No newline at end of file
+Index: app/src/main/java/com/example/simon_dice/SimonViewModel.kt
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>package com.example.simon_dice\r\n\r\nimport androidx.lifecycle.LiveData\r\nimport androidx.lifecycle.MutableLiveData\r\nimport androidx.lifecycle.ViewModel\r\nimport androidx.lifecycle.viewModelScope\r\nimport kotlinx.coroutines.delay\r\nimport kotlinx.coroutines.launch\r\nimport kotlin.random.Random\r\n\r\n\r\nclass SimonViewModel : ViewModel() {\r\n\r\n    // --- LIVE DATA: ESTADO OBSERVABLE ---\r\n    // La Activity observará estos datos para actualizar la UI\r\n\r\n    private val _estadoJuego = MutableLiveData(\"Pulsa INICIO / REINICIAR\")\r\n    val estadoJuego: LiveData<String> = _estadoJuego\r\n\r\n    private val _nivel = MutableLiveData(0)\r\n    val nivel: LiveData<Int> = _nivel\r\n\r\n    // Este LiveData envía el ID del color que la Activity debe parpadear y sonar.\r\n    // Usamos Int? y lo limpiamos (null) después de cada evento para que el Observer reaccione siempre.\r\n    private val _colorAParpadear = MutableLiveData<Int?>(null)\r\n    val colorAParpadear: LiveData<Int?> = _colorAParpadear\r\n\r\n    // Este LiveData se activa a 'true' al perder. La Activity lo usará para sonar el error.\r\n    private val _debeSonarError = MutableLiveData(false)\r\n    val debeSonarError: LiveData<Boolean> = _debeSonarError\r\n\r\n    // Este LiveData controla la habilitación de los botones de color.\r\n    private val _botonesHabilitados = MutableLiveData(false)\r\n    val botonesHabilitados: LiveData<Boolean> = _botonesHabilitados\r\n\r\n    private val _botonInicioHabilitado = MutableLiveData(true)\r\n    val botonInicioHabilitado: LiveData<Boolean> = _botonInicioHabilitado\r\n\r\n\r\n    // --- LÓGICA INTERNA DEL JUEGO ---\r\n    private val secuencia = mutableListOf<Int>()\r\n    private var indiceSecuenciaJugador = 0\r\n    private var esTurnoSimon = false\r\n\r\n    // Función de Lógica: Fase 1: Inicialización\r\n    fun iniciarJuego() {\r\n        if (!esTurnoSimon) {\r\n            secuencia.clear()\r\n            _nivel.value = 0\r\n            indiceSecuenciaJugador = 0\r\n            _botonInicioHabilitado.value = false\r\n            turnoSimon()\r\n        }\r\n    }\r\n\r\n    // Función de Lógica: Fase 2: Turno de Simón\r\n    private fun turnoSimon() = viewModelScope.launch {\r\n        esTurnoSimon = true\r\n        _botonesHabilitados.value = false // Deshabilitar botones mientras Simón muestra\r\n\r\n        // Aumentar Nivel y actualizar UI\r\n        _nivel.value = (_nivel.value ?: 0) + 1\r\n        _estadoJuego.value = \"Simón Muestra (Nivel ${_nivel.value})\"\r\n\r\n        // Añadir nuevo color\r\n        val nuevoColor = Random.nextInt(0, 4) // Genera 0, 1, 2 o 3\r\n        secuencia.add(nuevoColor)\r\n        indiceSecuenciaJugador = 0\r\n\r\n        delay(500L)\r\n\r\n        // Reproducir Secuencia\r\n        for (color in secuencia) {\r\n            // Publicar el evento de parpadeo y sonido para que la Activity reaccione\r\n            _colorAParpadear.value = color\r\n            _colorAParpadear.value = null // Limpiar el evento para el siguiente parpadeo\r\n\r\n            delay(750L) // Pausa entre tonos (500ms de parpadeo + 250ms de pausa)\r\n        }\r\n\r\n        turnoJugador()\r\n    }\r\n\r\n    // Función de Lógica: Fase 3: Transición al Turno del Jugador\r\n    private fun turnoJugador() {\r\n        esTurnoSimon = false\r\n        _estadoJuego.value = \"Tu Turno\"\r\n        _botonesHabilitados.value = true // Habilitar botones para el jugador\r\n    }\r\n\r\n    // Función de Lógica: Fase 3: Verificación del Clic del Jugador\r\n    fun manejarInputJugador(colorInput: Int) {\r\n        if (esTurnoSimon || _botonesHabilitados.value == false) return // Ignorar si no es el turno\r\n\r\n        val colorEsperado = secuencia[indiceSecuenciaJugador]\r\n\r\n        // Primero, enviar evento de feedback para el clic del jugador (parpadeo + sonido)\r\n        _colorAParpadear.value = colorInput\r\n        _colorAParpadear.value = null // Limpiar el evento\r\n\r\n        if (colorInput == colorEsperado) {\r\n            indiceSecuenciaJugador++\r\n\r\n            if (indiceSecuenciaJugador == secuencia.size) { // Secuencia completa\r\n                turnoSimon() // Pasar al siguiente nivel\r\n            }\r\n        } else {\r\n            finalizarJuego()\r\n        }\r\n    }\r\n\r\n    // Función de Lógica: Condición de Derrota (GAME_OVER)\r\n    private fun finalizarJuego() {\r\n        _debeSonarError.value = true // Activar evento de error para la Activity\r\n        _debeSonarError.value = false // Limpiar el evento\r\n\r\n        _estadoJuego.value = \"¡Has Perdido! Nivel Alcanzado: ${_nivel.value}\"\r\n        _botonesHabilitados.value = false\r\n        _botonInicioHabilitado.value = true\r\n    }\r\n}
+===================================================================
+diff --git a/app/src/main/java/com/example/simon_dice/SimonViewModel.kt b/app/src/main/java/com/example/simon_dice/SimonViewModel.kt
+--- a/app/src/main/java/com/example/simon_dice/SimonViewModel.kt	(revision 4abda2eb48f40d937f7a9f00093ab2e625343b3c)
++++ b/app/src/main/java/com/example/simon_dice/SimonViewModel.kt	(date 1763044810965)
+@@ -11,25 +11,21 @@
+ 
+ class SimonViewModel : ViewModel() {
+ 
+-    // --- LIVE DATA: ESTADO OBSERVABLE ---
+-    // La Activity observará estos datos para actualizar la UI
+-
++    // live data
+     private val _estadoJuego = MutableLiveData("Pulsa INICIO / REINICIAR")
+     val estadoJuego: LiveData<String> = _estadoJuego
+ 
+     private val _nivel = MutableLiveData(0)
+     val nivel: LiveData<Int> = _nivel
+ 
+-    // Este LiveData envía el ID del color que la Activity debe parpadear y sonar.
+-    // Usamos Int? y lo limpiamos (null) después de cada evento para que el Observer reaccione siempre.
++    // Notifica a la activity qué color debe parpadear. Se limpia inmediatamente después de usarse.
+     private val _colorAParpadear = MutableLiveData<Int?>(null)
+     val colorAParpadear: LiveData<Int?> = _colorAParpadear
+ 
+-    // Este LiveData se activa a 'true' al perder. La Activity lo usará para sonar el error.
++    // Indica a la activity que reproduzca el sonido de error
+     private val _debeSonarError = MutableLiveData(false)
+     val debeSonarError: LiveData<Boolean> = _debeSonarError
+ 
+-    // Este LiveData controla la habilitación de los botones de color.
+     private val _botonesHabilitados = MutableLiveData(false)
+     val botonesHabilitados: LiveData<Boolean> = _botonesHabilitados
+ 
+@@ -37,12 +33,11 @@
+     val botonInicioHabilitado: LiveData<Boolean> = _botonInicioHabilitado
+ 
+ 
+-    // --- LÓGICA INTERNA DEL JUEGO ---
++    // lógica interna
+     private val secuencia = mutableListOf<Int>()
+     private var indiceSecuenciaJugador = 0
+     private var esTurnoSimon = false
+ 
+-    // Función de Lógica: Fase 1: Inicialización
+     fun iniciarJuego() {
+         if (!esTurnoSimon) {
+             secuencia.clear()
+@@ -53,66 +48,59 @@
+         }
+     }
+ 
+-    // Función de Lógica: Fase 2: Turno de Simón
+     private fun turnoSimon() = viewModelScope.launch {
+         esTurnoSimon = true
+-        _botonesHabilitados.value = false // Deshabilitar botones mientras Simón muestra
++        _botonesHabilitados.value = false // Deshabilitar entrada del jugador
+ 
+-        // Aumentar Nivel y actualizar UI
+         _nivel.value = (_nivel.value ?: 0) + 1
+         _estadoJuego.value = "Simón Muestra (Nivel ${_nivel.value})"
+ 
+-        // Añadir nuevo color
+-        val nuevoColor = Random.nextInt(0, 4) // Genera 0, 1, 2 o 3
++        // Añadir nuevo color a la secuencia
++        val nuevoColor = Random.nextInt(0, 4)
+         secuencia.add(nuevoColor)
+         indiceSecuenciaJugador = 0
+ 
+         delay(500L)
+ 
+-        // Reproducir Secuencia
++        // Muestra la secuencia completa
+         for (color in secuencia) {
+-            // Publicar el evento de parpadeo y sonido para que la Activity reaccione
+             _colorAParpadear.value = color
+-            _colorAParpadear.value = null // Limpiar el evento para el siguiente parpadeo
+-
+-            delay(750L) // Pausa entre tonos (500ms de parpadeo + 250ms de pausa)
++            _colorAParpadear.value = null // Limpiar evento
++            delay(750L) // Pausa entre tonos
+         }
+ 
+         turnoJugador()
+     }
+ 
+-    // Función de Lógica: Fase 3: Transición al Turno del Jugador
+     private fun turnoJugador() {
+         esTurnoSimon = false
+         _estadoJuego.value = "Tu Turno"
+-        _botonesHabilitados.value = true // Habilitar botones para el jugador
++        _botonesHabilitados.value = true // Habilitar botones
+     }
+ 
+-    // Función de Lógica: Fase 3: Verificación del Clic del Jugador
+     fun manejarInputJugador(colorInput: Int) {
+-        if (esTurnoSimon || _botonesHabilitados.value == false) return // Ignorar si no es el turno
++        if (esTurnoSimon || _botonesHabilitados.value == false) return // Ignorar input
+ 
+         val colorEsperado = secuencia[indiceSecuenciaJugador]
+ 
+-        // Primero, enviar evento de feedback para el clic del jugador (parpadeo + sonido)
++        // Enviar feedback de parpadeo y sonido
+         _colorAParpadear.value = colorInput
+-        _colorAParpadear.value = null // Limpiar el evento
++        _colorAParpadear.value = null
+ 
+         if (colorInput == colorEsperado) {
+             indiceSecuenciaJugador++
+ 
+-            if (indiceSecuenciaJugador == secuencia.size) { // Secuencia completa
+-                turnoSimon() // Pasar al siguiente nivel
++            if (indiceSecuenciaJugador == secuencia.size) { // Secuencia acertada
++                turnoSimon()
+             }
+         } else {
+             finalizarJuego()
+         }
+     }
+ 
+-    // Función de Lógica: Condición de Derrota (GAME_OVER)
+     private fun finalizarJuego() {
+-        _debeSonarError.value = true // Activar evento de error para la Activity
+-        _debeSonarError.value = false // Limpiar el evento
++        _debeSonarError.value = true
++        _debeSonarError.value = false // Limpiar evento
+ 
+         _estadoJuego.value = "¡Has Perdido! Nivel Alcanzado: ${_nivel.value}"
+         _botonesHabilitados.value = false
