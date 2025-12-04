@@ -6,7 +6,6 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     tools:context=".MainActivity">
-
     <TextView
         android:id="@+id/tvScore"
         android:layout_width="wrap_content"
@@ -39,6 +38,7 @@
         app:layout_constraintTop_toBottomOf="@+id/tvStatus"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
+
     <androidx.constraintlayout.widget.Guideline
         android:id="@+id/guidelineCenter"
         android:layout_width="wrap_content"
@@ -53,7 +53,8 @@
         android:layout_marginTop="40dp"
         android:layout_marginEnd="8dp"
         android:backgroundTint="#008000"
-        app:layout_constraintTop_toBottomOf="@+id/tvRecord" app:layout_constraintEnd_toStartOf="@+id/guidelineCenter" />
+        app:layout_constraintTop_toBottomOf="@+id/tvRecord"
+        app:layout_constraintEnd_toStartOf="@+id/guidelineCenter" />
 
     <Button
         android:id="@+id/btnRed"
@@ -62,7 +63,8 @@
         android:layout_marginTop="40dp"
         android:layout_marginStart="8dp"
         android:backgroundTint="#FF0000"
-        app:layout_constraintTop_toBottomOf="@+id/tvRecord" app:layout_constraintStart_toStartOf="@+id/guidelineCenter" />
+        app:layout_constraintTop_toBottomOf="@+id/tvRecord"
+        app:layout_constraintStart_toStartOf="@+id/guidelineCenter" />
 
     <Button
         android:id="@+id/btnBlue"

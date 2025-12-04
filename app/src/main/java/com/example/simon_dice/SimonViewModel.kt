@@ -3,84 +3,156 @@ package com.example.simon_dice
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.example.simon_dice.data.RecordRepository
 import com.example.simon_dice.model.Record
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlin.random.Random
+
+// Representa los estados clave del juego.
+enum class GameState {
+    INICIO,
+    SIMON_TURNO,
+    JUGADOR_TURNO,
+    GAME_OVER
+}
+
+// Representa los colores del juego.
+enum class SimonColor { GREEN, RED, BLUE, YELLOW }
 
 /**
- * ViewModel para gestionar la lógica del juego Simón Dice y la persistencia del récord.
+ * ViewModel que gestiona la lógica del juego y la persistencia del récord.
+ * Se inyecta el repositorio para desacoplar la capa de datos.
  *
  * Referencia: [ViewModel | Android Developers](https://developer.android.com/topic/libraries/architecture/viewmodel)
- * El ViewModel sobrevive a los cambios de configuración y gestiona la comunicación
- * entre la UI y la capa de Datos (Repository).
- *
- * @property recordRepository El repositorio para acceder a los datos del récord.
  */
 class SimonViewModel(private val recordRepository: RecordRepository) : ViewModel() {
 
-    // ===============================================
-    // Lógica del Récord (NUEVO)
-    // ===============================================
-
-    // LiveData que expone el récord actual a la UI
+    // Live Data expuesto a la UI
     private val _record = MutableLiveData<Record>()
     val record: LiveData<Record> = _record
 
-    // LiveData para el nivel actual (Asumimos que ya existe)
     private val _currentLevel = MutableLiveData(0)
     val currentLevel: LiveData<Int> = _currentLevel
 
-    // ... Otras variables del juego (secuencia, estado, etc.) ...
+    private val _gameState = MutableLiveData(GameState.INICIO)
+    val gameState: LiveData<GameState> = _gameState
+
+    private val _colorToFlash = MutableLiveData<SimonColor?>()
+    val colorToFlash: LiveData<SimonColor?> = _colorToFlash
+
+    // Lógica interna
+    private var simonSequence = mutableListOf<SimonColor>()
+    private var playerSequenceIndex: Int = 0
 
     init {
-        // Carga el récord existente al iniciar el ViewModel
+        // Carga el récord al inicio del ViewModel.
         loadRecord()
     }
 
     /**
-     * Carga el récord actual desde el repositorio y actualiza el LiveData.
+     * Inicia una nueva partida, reiniciando secuencia y nivel.
+     * Referencia: [ViewModel Lifecycle | Android Developers]
+     */
+    fun startGame() {
+        simonSequence.clear()
+        playerSequenceIndex = 0
+        _currentLevel.value = 0
+        nextLevel()
+    }
+
+    /**
+     * Avanza al siguiente nivel, añade un color aleatorio y activa el turno de Simón.
+     * Referencia: [State management in Compose | Android Developers] (Aplicable al cambio de estados)
+     */
+    fun nextLevel() {
+        _currentLevel.value = (_currentLevel.value ?: 0) + 1
+        _gameState.value = GameState.SIMON_TURNO
+
+        val nextColor = SimonColor.entries[Random.nextInt(SimonColor.entries.size)]
+        simonSequence.add(nextColor)
+
+        // Lanzamos la secuencia en una corrutina para evitar bloquear la UI.
+        viewModelScope.launch {
+            playSimonSequence()
+        }
+    }
+
+    /**
+     * Reproduce la secuencia de colores de Simón con pausas.
+     * Referencia: [Coroutines on Android | Android Developers] (Uso de viewModelScope y delay)
+     */
+    private suspend fun playSimonSequence() {
+        delay(500L)
+        for (color in simonSequence) {
+            _colorToFlash.value = color
+            delay(500L)
+            _colorToFlash.value = null
+            delay(250L)
+        }
+
+        _gameState.value = GameState.JUGADOR_TURNO
+        playerSequenceIndex = 0
+    }
+
+    /**
+     * Procesa el click del jugador, verificando si coincide con la secuencia.
+     * @param clickedColor El color seleccionado por el jugador.
+     */
+    fun onPlayerClick(clickedColor: SimonColor) {
+        if (_gameState.value != GameState.JUGADOR_TURNO) return
+
+        val expectedColor = simonSequence[playerSequenceIndex]
+
+        if (clickedColor == expectedColor) {
+            viewModelScope.launch {
+                // Flash rápido para feedback de acierto
+                _colorToFlash.value = clickedColor
+                delay(100L)
+                _colorToFlash.value = null
+            }
+
+            playerSequenceIndex++
+
+            if (playerSequenceIndex == simonSequence.size) {
+                // Secuencia completada, avanza de nivel.
+                viewModelScope.launch {
+                    delay(800L)
+                    nextLevel()
+                }
+            }
+        } else {
+            // Input incorrecto: Game Over.
+            handleGameOver(_currentLevel.value ?: 0)
+        }
+    }
+
+    /**
+     * Maneja el fin de la partida. Establece el estado GAME_OVER y verifica si se ha batido el récord.
+     * Referencia: [ViewModel and Data Persistence | Android Developers]
+     * @param nivelAnterior El último nivel superado.
+     */
+    fun handleGameOver(nivelAnterior: Int) {
+        _gameState.value = GameState.GAME_OVER
+        checkAndSaveRecord(nivelAnterior)
+    }
+
+    /**
+     * Carga el récord actual desde el repositorio.
      */
     private fun loadRecord() {
         _record.value = recordRepository.getRecord()
     }
 
     /**
-     * Función llamada cuando el jugador pierde (Game Over).
-     * Comprueba si el nivel alcanzado supera el récord y lo guarda.
-     * * @param nivelAnterior El último nivel superado (o el nivel actual - 1).
-     */
-    fun handleGameOver(nivelAnterior: Int) {
-        // ... (Lógica de Game Over: Sonido de error, cambio de estado, etc.) ...
-
-        // Guardar récord
-        checkAndSaveRecord(nivelAnterior)
-    }
-
-    /**
-     * Llama al repositorio para intentar guardar el nivel alcanzado.
-     * Si se guarda un nuevo récord, actualiza el LiveData.
-     * * @param nivelAlcanzado El nivel que intentamos establecer como nuevo récord.
+     * Intenta guardar el nivel alcanzado como nuevo récord.
+     * Si se guarda, actualiza el LiveData.
      */
     private fun checkAndSaveRecord(nivelAlcanzado: Int) {
         val isNewRecord = recordRepository.saveIfNewRecord(nivelAlcanzado)
-        // Si el repositorio confirma que hubo un nuevo récord, actualizamos la UI
         if (isNewRecord) {
             loadRecord()
-            // Podrías añadir lógica aquí para mostrar un mensaje de "¡NUEVO RÉCORD!"
         }
     }
-
-    // ===============================================
-    // Lógica del Juego (Ejemplo)
-    // ===============================================
-
-    /**
-     * Lógica para avanzar al siguiente nivel.
-     */
-    fun nextLevel() {
-        val next = (_currentLevel.value ?: 0) + 1
-        _currentLevel.value = next
-        // ... (Lógica de Simón: Añadir color, reproducir secuencia) ...
-    }
-
-    // ... Resto de la lógica del juego (start, onPlayerClick, verificar secuencia, etc.) ...
 }

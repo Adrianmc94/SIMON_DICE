@@ -1,23 +1,21 @@
 package com.example.simon_dice.data
+
+import com.example.simon_dice.model.Record
+
 /**
  * Interfaz para la fuente de datos del récord.
- * Esto permite cambiar la implementación subyacente (SharedPreferences, Room, etc.)
- * sin modificar el Repository o el ViewModel.
  *
- * Referencia: Principios SOLID (Inversión de Dependencia).
+ * Referencia: [Guía para arquitecturas de apps | Android Developers](https://developer.android.com/topic/architecture/data-layer)
+ * Este contrato permite cambiar la tecnología de persistencia (SharedPreferences a Room)
+ * sin modificar el Repository o el ViewModel.
  */
 interface RecordDataSource {
-    /**
-     * Obtiene el récord actual almacenado.
-     * @return El objeto [Record] con el nivel y la marca de tiempo.
-     */
+    /** Obtiene el récord actual almacenado. */
     fun getRecord(): Record
 
     /**
-     * Guarda un nuevo récord si el nivel es mayor que el récord actual.
-     *
-     * @param nuevoNivel El nivel alcanzado.
-     * @return true si se guardó un nuevo récord, false en caso contrario.
+     * Guarda un nuevo récord si el [nuevoNivel] es mayor que el récord actual.
+     * @return true si se guardó un nuevo récord.
      */
     fun saveNewRecord(nuevoNivel: Int): Boolean
 }

@@ -1,22 +1,26 @@
 package com.example.simon_dice
 
 import android.os.Bundle
+import android.widget.Button
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
-import androidx.activity.viewModels // Para usar la delegación de ViewModels
+import androidx.activity.viewModels
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import com.example.simon_dice.data.RecordRepository
 import com.example.simon_dice.data.impl.RecordSharedPreferencesDataSource
 import com.example.simon_dice.model.Record
-import java.util.Observer // Usamos la importación completa para evitar conflictos
 
 /**
- * Factory simple para crear el ViewModel con el Repositorio.
- * Necesario ya que el ViewModel tiene un argumento en el constructor.
+ * Factory personalizado para crear el ViewModel. Permite inyectar el [RecordRepository]
+ * en el constructor del [SimonViewModel], siguiendo el principio SOLID.
+ *
+ * Referencia: [ViewModel Factory | Android Developers](https://developer.android.com/topic/libraries/architecture/viewmodel#vm-factory)
  */
 class SimonDiceViewModelFactory(
     private val repository: RecordRepository
-) : androidx.lifecycle.ViewModelProvider.Factory {
-    override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+) : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(SimonViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
             return SimonViewModel(repository) as T
@@ -28,51 +32,83 @@ class SimonDiceViewModelFactory(
 
 /**
  * Activity principal del juego Simón Dice.
+ * Actúa como la Vista (View) en el patrón MVVM, encargándose de la UI y los eventos.
+ *
+ * Referencia: [Activity | Android Developers](https://developer.android.com/reference/android/app/Activity)
  */
 class MainActivity : AppCompatActivity() {
 
-    // Instancia de los componentes de la capa de Datos (NUEVO)
-    private lateinit var recordDataSource: RecordSharedPreferencesDataSource
-    private lateinit var recordRepository: RecordRepository
+    /**
+     * Fuente de Datos de Shared Preferences. Se usa 'lazy' para inicializarla solo
+     * cuando sea requerida por el Repositorio.
+     * Referencia: [Kotlin Lazy initialization | Kotlin Docs](https://kotlinlang.org/docs/delegated-properties.html#lazy-properties)
+     */
+    private val recordDataSource: RecordSharedPreferencesDataSource by lazy {
+        RecordSharedPreferencesDataSource(applicationContext)
+    }
 
-    // Delegación del ViewModel usando el Factory (MEJOR PRÁCTICA)
+    /**
+     * Repositorio de Récord. Es la única fuente de datos conocida por el ViewModel.
+     */
+    private val recordRepository: RecordRepository by lazy {
+        RecordRepository(recordDataSource)
+    }
+
+    /**
+     * Delegación del ViewModel usando el Factory personalizado.
+     * Referencia: [by viewModels | Android Developers](https://developer.android.com/topic/libraries/architecture/viewmodel#kotlin)
+     */
     private val viewModel: SimonViewModel by viewModels {
         SimonDiceViewModelFactory(recordRepository)
     }
 
+    // VISTAS
     private lateinit var tvScore: TextView
     private lateinit var tvStatus: TextView
-    private lateinit var tvRecord: TextView // NUEVO TextView
+    private lateinit var tvRecord: TextView
 
+    // Botones del juego
+    private lateinit var btnStartRestart: Button
+    private lateinit var btnGreen: Button
+    private lateinit var btnRed: Button
+    private lateinit var btnBlue: Button
+    private lateinit var btnYellow: Button
+
+    /**
+     * Punto de entrada de la Activity. Inicializa la UI y establece observadores y listeners.
+     * Referencia: [Activity Lifecycle | Android Developers]
+     */
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        // 1. Inicialización de la cadena de Dependencias (NUEVO)
-        recordDataSource = RecordSharedPreferencesDataSource(applicationContext)
-        recordRepository = RecordRepository(recordDataSource)
-
-        // Inicialización de la UI
+        // Inicializar Vistas (Binding manual)
         tvScore = findViewById(R.id.tvScore)
         tvStatus = findViewById(R.id.tvStatus)
-        tvRecord = findViewById(R.id.tvRecord) // Referencia al nuevo TextView
+        tvRecord = findViewById(R.id.tvRecord)
+
+        // Inicializar Botones
+        btnStartRestart = findViewById(R.id.btnStartRestart)
+        btnGreen = findViewById(R.id.btnGreen)
+        btnRed = findViewById(R.id.btnRed)
+        btnBlue = findViewById(R.id.btnBlue)
+        btnYellow = findViewById(R.id.btnYellow)
 
         setupObservers()
         setupListeners()
     }
 
     /**
-     * Configura la observación de los LiveData del ViewModel.
+     * Configura la observación de los datos (LiveData) del ViewModel.
      */
     private fun setupObservers() {
-        // Observador del nivel actual (Asumimos que ya existía)
+        // Observador del nivel actual
         viewModel.currentLevel.observe(this) { level ->
             tvScore.text = "Nivel: $level"
         }
 
-        // Observador del Récord (NUEVO)
+        // Observador del Récord (para actualizar el TextView del récord)
         // Referencia: [LiveData Overview | Android Developers](https://developer.android.com/topic/libraries/architecture/livedata)
-        // Observa cambios en el récord para actualizar el TextView.
         viewModel.record.observe(this) { record: Record ->
             tvRecord.text = if (record.nivel > 0) {
                 "Récord: Nivel ${record.nivel} (${record.marcaTiempo})"
@@ -80,26 +116,34 @@ class MainActivity : AppCompatActivity() {
                 "Récord: Nivel 0 (No establecido)"
             }
         }
-
-        // ... Otros observadores (estado del juego, etc.) ...
     }
 
     /**
-     * Configura los listeners del botón Start/Restart.
+     * Configura los listeners de los botones para enviar eventos al ViewModel.
+     * Referencia: [View.setOnClickListener() | Android Developers]
      */
     private fun setupListeners() {
-        findViewById<android.widget.Button>(R.id.btnStartRestart).setOnClickListener {
-            viewModel.nextLevel() // Ejemplo de cómo se inicia el juego
+        // Listener del botón START / RESTART
+        btnStartRestart.setOnClickListener {
+            viewModel.startGame()
             tvStatus.text = "Simón Muestra..."
         }
 
-        // ... Listeners para los botones de color ...
-    }
+        // Listeners para los botones de color (Envían la acción del jugador al ViewModel)
+        btnGreen.setOnClickListener {
+            viewModel.onPlayerClick(SimonColor.GREEN)
+        }
 
-    // Ejemplo de cómo llamar a la lógica de Game Over
-    fun onGameLost(lastLevelAchieved: Int) {
-        tvStatus.text = "¡Has Perdido!"
-        // Llama al ViewModel para registrar el récord
-        viewModel.handleGameOver(lastLevelAchieved)
+        btnRed.setOnClickListener {
+            viewModel.onPlayerClick(SimonColor.RED)
+        }
+
+        btnBlue.setOnClickListener {
+            viewModel.onPlayerClick(SimonColor.BLUE)
+        }
+
+        btnYellow.setOnClickListener {
+            viewModel.onPlayerClick(SimonColor.YELLOW)
+        }
     }
 }
