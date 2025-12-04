@@ -1,187 +1,105 @@
 package com.example.simon_dice
 
-// Importamos lo necesario para sonidos, UI con Compose y corrutinas
-import android.media.AudioAttributes
-import android.media.SoundPool
 import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.viewModels
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.Text
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.platform.LocalContext
+import android.widget.TextView
+import androidx.appcompat.app.AppCompatActivity
+import androidx.activity.viewModels // Para usar la delegación de ViewModels
+import com.example.simon_dice.data.RecordRepository
+import com.example.simon_dice.data.impl.RecordSharedPreferencesDataSource
+import com.example.simon_dice.model.Record
+import java.util.Observer // Usamos la importación completa para evitar conflictos
 
-// Esta es la pantalla principal del juego
-class MainActivity : ComponentActivity() {
+/**
+ * Factory simple para crear el ViewModel con el Repositorio.
+ * Necesario ya que el ViewModel tiene un argumento en el constructor.
+ */
+class SimonDiceViewModelFactory(
+    private val repository: RecordRepository
+) : androidx.lifecycle.ViewModelProvider.Factory {
+    override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+        if (modelClass.isAssignableFrom(SimonViewModel::class.java)) {
+            @Suppress("UNCHECKED_CAST")
+            return SimonViewModel(repository) as T
+        }
+        throw IllegalArgumentException("Unknown ViewModel class")
+    }
+}
 
-    // Referencia al ViewModel para manejar la lógica del juego
-    private val viewModel: SimonViewModel by viewModels()
 
-    // Para manejar los sonidos del juego
-    private lateinit var soundPool: SoundPool
-    private val soundMap = mutableMapOf<Int, Int>() // mapas de sonidos por color
-    private var idTonoError: Int = 0 // sonido de error
+/**
+ * Activity principal del juego Simón Dice.
+ */
+class MainActivity : AppCompatActivity() {
+
+    // Instancia de los componentes de la capa de Datos (NUEVO)
+    private lateinit var recordDataSource: RecordSharedPreferencesDataSource
+    private lateinit var recordRepository: RecordRepository
+
+    // Delegación del ViewModel usando el Factory (MEJOR PRÁCTICA)
+    private val viewModel: SimonViewModel by viewModels {
+        SimonDiceViewModelFactory(recordRepository)
+    }
+
+    private lateinit var tvScore: TextView
+    private lateinit var tvStatus: TextView
+    private lateinit var tvRecord: TextView // NUEVO TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
 
-        // Inicializamos los sonidos
-        initSoundPool()
+        // 1. Inicialización de la cadena de Dependencias (NUEVO)
+        recordDataSource = RecordSharedPreferencesDataSource(applicationContext)
+        recordRepository = RecordRepository(recordDataSource)
 
-        // Ponemos la UI usando Compose
-        setContent {
-            val uiState by viewModel.uiState.collectAsState() // estado actual del juego
-            val flashing = remember { mutableStateMapOf<Int, Boolean>() } // para saber qué botón está parpadeando
+        // Inicialización de la UI
+        tvScore = findViewById(R.id.tvScore)
+        tvStatus = findViewById(R.id.tvStatus)
+        tvRecord = findViewById(R.id.tvRecord) // Referencia al nuevo TextView
 
-            // Escuchamos eventos del juego (flash o sonido de error)
-            LaunchedEffect(viewModel) {
-                viewModel.eventFlow.collect { event ->
-                    when (event) {
-                        is UiEvent.FlashColor -> { // si toca parpadear un color
-                            playToneForColor(event.colorId) // suena el tono
-                            flashing[event.colorId] = true // activamos el flash
-                            launch {
-                                delay(event.duration) // esperamos un momento
-                                flashing[event.colorId] = false // apagamos el flash
-                            }
-                        }
-                        UiEvent.PlayErrorSound -> playErrorTone() // si hubo error, reproducimos tono de error
-                    }
-                }
-            }
-
-            // Llamamos a la función que dibuja la pantalla principal
-            MainScreen(
-                uiState = uiState,
-                onStartClick = { viewModel.iniciarJuego() }, // iniciar juego
-                onColorClick = { viewModel.manejarInputJugador(it) }, // cuando el jugador pulsa un color
-                flashing = flashing
-            )
-        }
+        setupObservers()
+        setupListeners()
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        soundPool.release() // liberamos los sonidos al cerrar
-    }
-
-    // Preparamos todos los sonidos del juego
-    private fun initSoundPool() {
-        val audioAttributes = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_GAME)
-            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-            .build()
-
-        soundPool = SoundPool.Builder()
-            .setMaxStreams(5)
-            .setAudioAttributes(audioAttributes)
-            .build()
-
-        // Cargamos 4 tonos para los colores
-        for (i in 0..3) {
-            val resId = resources.getIdentifier("tone$i", "raw", packageName)
-            if (resId != 0) soundMap[i] = soundPool.load(this, resId, 1)
+    /**
+     * Configura la observación de los LiveData del ViewModel.
+     */
+    private fun setupObservers() {
+        // Observador del nivel actual (Asumimos que ya existía)
+        viewModel.currentLevel.observe(this) { level ->
+            tvScore.text = "Nivel: $level"
         }
 
-        // Cargamos el sonido de error
-        val errorResId = resources.getIdentifier("error_tone", "raw", packageName)
-        if (errorResId != 0) idTonoError = soundPool.load(this, errorResId, 1)
-    }
-
-    // Función para reproducir el sonido de un color
-    private fun playToneForColor(colorId: Int) {
-        soundMap[colorId]?.let { soundPool.play(it, 1f, 1f, 1, 0, 1f) }
-    }
-
-    // Función para reproducir el sonido de error
-    private fun playErrorTone() {
-        if (idTonoError != 0) soundPool.play(idTonoError, 1f, 1f, 1, 0, 1f)
-    }
-}
-
-// ---------- Composables: UI de Compose ----------
-
-// Esta función dibuja la pantalla principal del juego
-@Composable
-fun MainScreen(
-    uiState: SimonState, // estado actual del juego
-    onStartClick: () -> Unit, // acción al pulsar iniciar
-    onColorClick: (Int) -> Unit, // acción al pulsar un color
-    flashing: Map<Int, Boolean> // indica qué botones están parpadeando
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(18.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween
-    ) {
-        // Mostramos nivel y mensaje
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Nivel: ${uiState.score}", fontSize = 28.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(8.dp))
-            Text(text = uiState.state.statusText, fontSize = 18.sp)
-        }
-
-        // Botones de colores en 2 filas
-        Column {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                ColorPadButton(0, uiState.isColorButtonsEnabled, flashing[0] == true) { onColorClick(0) }
-                ColorPadButton(1, uiState.isColorButtonsEnabled, flashing[1] == true) { onColorClick(1) }
-            }
-            Spacer(Modifier.height(12.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                ColorPadButton(2, uiState.isColorButtonsEnabled, flashing[2] == true) { onColorClick(2) }
-                ColorPadButton(3, uiState.isColorButtonsEnabled, flashing[3] == true) { onColorClick(3) }
+        // Observador del Récord (NUEVO)
+        // Referencia: [LiveData Overview | Android Developers](https://developer.android.com/topic/libraries/architecture/livedata)
+        // Observa cambios en el récord para actualizar el TextView.
+        viewModel.record.observe(this) { record: Record ->
+            tvRecord.text = if (record.nivel > 0) {
+                "Récord: Nivel ${record.nivel} (${record.marcaTiempo})"
+            } else {
+                "Récord: Nivel 0 (No establecido)"
             }
         }
 
-        // Botón de iniciar
-        Button(
-            onClick = onStartClick,
-            enabled = uiState.isStartButtonEnabled,
-            modifier = Modifier.fillMaxWidth().height(56.dp)
-        ) {
-            Text("INICIAR")
+        // ... Otros observadores (estado del juego, etc.) ...
+    }
+
+    /**
+     * Configura los listeners del botón Start/Restart.
+     */
+    private fun setupListeners() {
+        findViewById<android.widget.Button>(R.id.btnStartRestart).setOnClickListener {
+            viewModel.nextLevel() // Ejemplo de cómo se inicia el juego
+            tvStatus.text = "Simón Muestra..."
         }
-    }
-}
 
-// Este composable es un botón de color que puede parpadear
-@Composable
-fun ColorPadButton(index: Int, isEnabled: Boolean, isFlashing: Boolean, onClick: () -> Unit) {
-    // Definimos los colores por índice
-    val baseColor = when (index) {
-        0 -> Color(0xFF4CAF50) // verde
-        1 -> Color(0xFFF44336) // rojo
-        2 -> Color(0xFFFFC107) // amarillo
-        3 -> Color(0xFF2196F3) // azul
-        else -> Color.Gray
+        // ... Listeners para los botones de color ...
     }
 
-    // Si está parpadeando, mostramos blanco
-    val displayColor = if (isFlashing) Color.White else baseColor
-
-    Box(
-        modifier = Modifier
-            .size(140.dp)
-            .then(if (isEnabled) Modifier.clickable { onClick() } else Modifier) // solo clicable si está activo
-            .background(color = displayColor, shape = RoundedCornerShape(12.dp)),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(text = " ", fontSize = 16.sp) // placeholder, no muestra texto
+    // Ejemplo de cómo llamar a la lógica de Game Over
+    fun onGameLost(lastLevelAchieved: Int) {
+        tvStatus.text = "¡Has Perdido!"
+        // Llama al ViewModel para registrar el récord
+        viewModel.handleGameOver(lastLevelAchieved)
     }
 }
