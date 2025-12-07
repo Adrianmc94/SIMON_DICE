@@ -1,149 +1,206 @@
 package com.example.simon_dice
 
+import android.media.MediaPlayer
 import android.os.Bundle
-import android.widget.Button
-import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity
-import androidx.activity.viewModels
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
-import com.example.simon_dice.data.RecordRepository
-import com.example.simon_dice.data.impl.RecordSharedPreferencesDataSource
-import com.example.simon_dice.model.Record
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.colorResource
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.simon_dice.R
 
-/**
- * Factory personalizado para crear el ViewModel. Permite inyectar el [RecordRepository]
- * en el constructor del [SimonViewModel], siguiendo el principio SOLID.
- *
- * Referencia: [ViewModel Factory | Android Developers](https://developer.android.com/topic/libraries/architecture/viewmodel#vm-factory)
- */
-class SimonDiceViewModelFactory(
-    private val repository: RecordRepository
-) : ViewModelProvider.Factory {
-    override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        if (modelClass.isAssignableFrom(SimonViewModel::class.java)) {
-            @Suppress("UNCHECKED_CAST")
-            return SimonViewModel(repository) as T
-        }
-        throw IllegalArgumentException("Unknown ViewModel class")
-    }
-}
-
-
-/**
- * Activity principal del juego Simón Dice.
- * Actúa como la Vista (View) en el patrón MVVM, encargándose de la UI y los eventos.
- *
- * Referencia: [Activity | Android Developers](https://developer.android.com/reference/android/app/Activity)
- */
-class MainActivity : AppCompatActivity() {
-
-    /**
-     * Fuente de Datos de Shared Preferences. Se usa 'lazy' para inicializarla solo
-     * cuando sea requerida por el Repositorio.
-     * Referencia: [Kotlin Lazy initialization | Kotlin Docs](https://kotlinlang.org/docs/delegated-properties.html#lazy-properties)
-     */
-    private val recordDataSource: RecordSharedPreferencesDataSource by lazy {
-        RecordSharedPreferencesDataSource(applicationContext)
-    }
-
-    /**
-     * Repositorio de Récord. Es la única fuente de datos conocida por el ViewModel.
-     */
-    private val recordRepository: RecordRepository by lazy {
-        RecordRepository(recordDataSource)
-    }
-
-    /**
-     * Delegación del ViewModel usando el Factory personalizado.
-     * Referencia: [by viewModels | Android Developers](https://developer.android.com/topic/libraries/architecture/viewmodel#kotlin)
-     */
-    private val viewModel: SimonViewModel by viewModels {
-        SimonDiceViewModelFactory(recordRepository)
-    }
-
-    // VISTAS
-    private lateinit var tvScore: TextView
-    private lateinit var tvStatus: TextView
-    private lateinit var tvRecord: TextView
-
-    // Botones del juego
-    private lateinit var btnStartRestart: Button
-    private lateinit var btnGreen: Button
-    private lateinit var btnRed: Button
-    private lateinit var btnBlue: Button
-    private lateinit var btnYellow: Button
-
-    /**
-     * Punto de entrada de la Activity. Inicializa la UI y establece observadores y listeners.
-     * Referencia: [Activity Lifecycle | Android Developers]
-     */
+class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
-
-        // Inicializar Vistas (Binding manual)
-        tvScore = findViewById(R.id.tvScore)
-        tvStatus = findViewById(R.id.tvStatus)
-        tvRecord = findViewById(R.id.tvRecord)
-
-        // Inicializar Botones
-        btnStartRestart = findViewById(R.id.btnStartRestart)
-        btnGreen = findViewById(R.id.btnGreen)
-        btnRed = findViewById(R.id.btnRed)
-        btnBlue = findViewById(R.id.btnBlue)
-        btnYellow = findViewById(R.id.btnYellow)
-
-        setupObservers()
-        setupListeners()
-    }
-
-    /**
-     * Configura la observación de los datos (LiveData) del ViewModel.
-     */
-    private fun setupObservers() {
-        // Observador del nivel actual
-        viewModel.currentLevel.observe(this) { level ->
-            tvScore.text = "Nivel: $level"
-        }
-
-        // Observador del Récord (para actualizar el TextView del récord)
-        // Referencia: [LiveData Overview | Android Developers](https://developer.android.com/topic/libraries/architecture/livedata)
-        viewModel.record.observe(this) { record: Record ->
-            tvRecord.text = if (record.nivel > 0) {
-                "Récord: Nivel ${record.nivel} (${record.marcaTiempo})"
-            } else {
-                "Récord: Nivel 0 (No establecido)"
+        setContent {
+            Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF202020)) {
+                SimonDiceScreen()
             }
         }
     }
+}
 
-    /**
-     * Configura los listeners de los botones para enviar eventos al ViewModel.
-     * Referencia: [View.setOnClickListener() | Android Developers]
-     */
-    private fun setupListeners() {
-        // Listener del botón START / RESTART
-        btnStartRestart.setOnClickListener {
-            viewModel.startGame()
-            tvStatus.text = "Simón Muestra..."
-        }
+// COMPONENTE PRINCIPAL (VISTA)
+@Composable
+fun SimonDiceScreen(viewModel: SimonViewModel = viewModel()) {
+    // 1. Observar los estados del ViewModel (StateFlows)
+    val gameState by viewModel.gameState.collectAsState()
+    val level by viewModel.level.collectAsState()
+    val feedbackColor by viewModel.feedbackColor.collectAsState()
+    val simonSequence by viewModel.simonSequence.collectAsState()
+    val context = LocalContext.current
 
-        // Listeners para los botones de color (Envían la acción del jugador al ViewModel)
-        btnGreen.setOnClickListener {
-            viewModel.onPlayerClick(SimonColor.GREEN)
-        }
+    // Efecto secundario para la reproducción de tonos
+    LaunchedEffect(feedbackColor) {
+        feedbackColor?.let { colorId ->
+            val toneResId = try {
+                ColorJuego.fromId(colorId).tonoRes
+            } catch (e: Exception) {
+                println("Error al obtener recurso de tono: ${e.message}")
+                return@let
+            }
 
-        btnRed.setOnClickListener {
-            viewModel.onPlayerClick(SimonColor.RED)
+            val mediaPlayer = MediaPlayer.create(context, toneResId)
+            mediaPlayer?.start()
+            mediaPlayer?.setOnCompletionListener { it.release() }
         }
+    }
 
-        btnBlue.setOnClickListener {
-            viewModel.onPlayerClick(SimonColor.BLUE)
-        }
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.SpaceAround
+    ) {
+        // Marcador y Mensaje de Estado
+        ScoreAndStatus(gameState, level)
 
-        btnYellow.setOnClickListener {
-            viewModel.onPlayerClick(SimonColor.YELLOW)
+        // Botones de Simón
+        SimonButtonsGrid(
+            gameState = gameState,
+            feedbackColor = feedbackColor,
+            onButtonClick = viewModel::manejarClickJugador
+        )
+
+        // Botón de Inicio/Reinicio
+        StartButton(gameState, viewModel::iniciarJuego)
+
+        // Mostrar la secuencia generada en el LogCat (Requisito de simulación)
+        LaunchedEffect(simonSequence) {
+            if (simonSequence.isNotEmpty()) {
+                // Mapear los IDs de color a nombres para el Log
+                val colorNames = simonSequence.map { id ->
+                    try {
+                        ColorJuego.fromId(id).name
+                    } catch (e: Exception) {
+                        "UNKNOWN_COLOR"
+                    }
+                }
+                println("SIMON SEQUENCE: $colorNames")
+            }
         }
+    }
+}
+
+// COMPONENTES REUTILIZABLES
+@Composable
+fun ScoreAndStatus(gameState: GameState, level: Int) {
+    val statusText = when (gameState) {
+        GameState.INICIO -> "Presiona START para Jugar"
+        GameState.SIMON_TURNO -> "¡SIMÓN MUESTRA!"
+        GameState.JUGADOR_TURNO -> "¡TU TURNO! Nivel $level"
+        // Muestra el nivel que se quedó antes de perder
+        GameState.GAME_OVER -> "¡JUEGO TERMINADO! Nivel Alcanzado: ${level - 1}"
+    }
+
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = "Nivel Actual: $level",
+            fontSize = 24.sp,
+            color = Color.White
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = statusText,
+            fontSize = 18.sp,
+            color = when (gameState) {
+                GameState.GAME_OVER -> Color.Red
+                GameState.JUGADOR_TURNO -> Color(0xFF64FFDA) // Verde-Aqua
+                else -> Color.LightGray
+            }
+        )
+    }
+}
+
+@Composable
+fun SimonButtonsGrid(
+    gameState: GameState,
+    feedbackColor: Int?,
+    onButtonClick: (Int) -> Unit
+) {
+    // Usamos el enum ColorJuego que está en el SimonViewModel
+    val colors = ColorJuego.entries.toList()
+    // Los botones solo están habilitados si estamos en el turno del jugador
+    val enabled = gameState == GameState.JUGADOR_TURNO
+
+    Column(
+        modifier = Modifier
+            .size(300.dp)
+            .padding(8.dp),
+        verticalArrangement = Arrangement.SpaceEvenly
+    ) {
+        Row(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            SimonButton(colors[0], enabled, feedbackColor, onButtonClick) // VERDE
+            SimonButton(colors[1], enabled, feedbackColor, onButtonClick) // ROJO
+        }
+        Row(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            SimonButton(colors[2], enabled, feedbackColor, onButtonClick) // AZUL
+            SimonButton(colors[3], enabled, feedbackColor, onButtonClick) // AMARILLO
+        }
+    }
+}
+
+@Composable
+fun RowScope.SimonButton(
+    colorJuego: ColorJuego,
+    enabled: Boolean,
+    feedbackColor: Int?,
+    onClick: (Int) -> Unit
+) {
+    // Verificar si este botón debe estar iluminado
+    val isIlluminated = feedbackColor == colorJuego.id
+
+    val baseColor = colorResource(id = colorJuego.colorRes)
+
+    val colorToUse = if (isIlluminated) baseColor.copy(alpha = 1f) else baseColor.copy(alpha = 0.5f)
+
+    Box(
+        modifier = Modifier
+            .weight(1f)
+            .fillMaxHeight()
+            .padding(8.dp)
+            .background(colorToUse, RoundedCornerShape(16.dp))
+            // Deshabilita el clickable si no está enabled
+            .let {
+                if (enabled) {
+                    it.clickable { onClick(colorJuego.id) }
+                } else {
+                    it
+                }
+            }
+    )
+}
+
+@Composable
+fun StartButton(gameState: GameState, onStartClick: () -> Unit) {
+    Button(
+        onClick = onStartClick,
+        enabled = gameState == GameState.INICIO || gameState == GameState.GAME_OVER,
+        modifier = Modifier
+            .fillMaxWidth(0.5f)
+            .height(50.dp)
+    ) {
+        Text(
+            text = if (gameState == GameState.GAME_OVER) "REINICIAR" else "START",
+            fontSize = 20.sp
+        )
     }
 }
