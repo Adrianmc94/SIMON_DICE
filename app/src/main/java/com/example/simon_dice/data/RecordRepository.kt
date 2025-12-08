@@ -1,37 +1,48 @@
 package com.example.simon_dice.data
 
-import com.example.simon_dice.data.local.RecordDao
+import com.example.simon_dice.data.local.RecordDao // Sigue siendo necesario para la implementación real
 
 /**
  * [RecordRepository] es el punto de acceso central para los datos del récord.
  *
  * La arquitectura MVVM requiere un Repositorio para abstraer la fuente
- * de datos (actualmente Shared Preferences, pero mañana podría ser otra),
- * cumpliendo con el requisito de modularidad.
+ * de datos.
  *
- * @property recordDao El objeto de acceso a datos local.
+ * **IMPORTANTE:** Ahora el constructor acepta una interfaz para permitir
+ * el Mocking en pruebas unitarias sin dependencia de Android.
+ *
+ * @property recordDataSource La fuente de datos del récord (puede ser RecordDao o un Mock).
  */
-class RecordRepository(private val recordDao: RecordDao) {
+open class RecordRepository(val recordDataSource: RecordDaoInterface) {
+
+    /**
+     * Interfaz que define las operaciones de datos necesarias.
+     * Esta interfaz permite desacoplar el Repositorio de la implementación específica de Android (RecordDao).
+     */
+    interface RecordDaoInterface {
+        fun loadRecord(): Record
+        fun saveRecord(score: Int, timestamp: Long)
+    }
 
     /**
      * Carga el récord actual desde la fuente de datos.
      */
-    fun getRecord(): Record {
-        return recordDao.loadRecord()
+    open fun getRecord(): Record {
+        return recordDataSource.loadRecord()
     }
 
     /**
      * Comprueba si el score final es un nuevo récord y, si lo es, lo guarda.
-     * @param finalScore La puntuación obtenida al finalizar el juego.
-     * @param currentRecord El récord que se comparará con la puntuación final.
+     * @param finalLevel El nivel alcanzado.
+     * @param currentRecord El récord actual.
      * @return True si se ha guardado un nuevo récord, False en caso contrario.
      */
-    fun updateRecordIfHigher(finalScore: Int, currentRecord: Record): Boolean {
+    open fun updateRecordIfHigher(finalLevel: Int, currentRecord: Record): Boolean {
+        // La puntuación real es el nivel final - 1 (porque el nivel se incrementa al inicio de la ronda)
+        val finalScore = finalLevel - 1
+
         if (currentRecord.isNewRecord(finalScore)) {
-            // Se restaura 1 porque el nivel se incrementa al principio de la ronda
-            // y el juego termina al fallo.
-            val finalScoreToSave = finalScore - 1
-            recordDao.saveRecord(finalScoreToSave, System.currentTimeMillis())
+            recordDataSource.saveRecord(finalScore, System.currentTimeMillis())
             return true
         }
         return false

@@ -1,5 +1,6 @@
 package com.example.simon_dice
 
+import android.media.MediaPlayer
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -20,10 +21,12 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import android.text.format.DateFormat
 import androidx.compose.ui.text.font.FontWeight
-import com.example.simon_dice.data.Record
+import androidx.compose.ui.platform.LocalContext
 import com.example.simon_dice.data.RecordRepository
 import com.example.simon_dice.data.local.RecordDao
 import com.example.simon_dice.R
+import java.util.Date
+import java.util.Locale
 
 /**
  * [SimonViewModelFactory] es una fábrica de ViewModels personalizada para inyectar dependencias.
@@ -40,55 +43,72 @@ class SimonViewModelFactory(private val repository: RecordRepository) : ViewMode
 }
 
 class MainActivity : ComponentActivity() {
+
+    // Inicializamos el Repositorio de Récords y el Factory para inyectar al ViewModel
+    private lateinit var recordRepository: RecordRepository
+    private lateinit var viewModelFactory: SimonViewModelFactory
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Inicialización de la capa de datos
+        // 1. Inicialización de la capa de datos (DAOs y Repositorios)
         val recordDao = RecordDao(applicationContext)
-        val recordRepository = RecordRepository(recordDao)
-
-        // Creación de la Factory
-        val viewModelFactory = SimonViewModelFactory(recordRepository)
+        recordRepository = RecordRepository(recordDao)
+        viewModelFactory = SimonViewModelFactory(recordRepository)
 
         setContent {
-            // Se usa Surface directamente para establecer el color de fondo de la pantalla.
+            // Definir un tema oscuro y fondo para mayor contraste de los botones
             Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF202020)) {
-                // Usar la Factory para obtener el ViewModel
-                SimonDiceScreen(viewModel = viewModel(factory = viewModelFactory))
+                // Inyectamos el ViewModel con la Factory
+                SimonDiceScreen(viewModel(factory = viewModelFactory))
             }
         }
     }
 }
 
-// COMPONENTE PRINCIPAL (VISTA)
+// --- COMPONENTE PRINCIPAL (VISTA) ---
 @Composable
 fun SimonDiceScreen(viewModel: SimonViewModel = viewModel()) {
     // 1. Observar los estados del ViewModel (StateFlows)
     val gameState by viewModel.gameState.collectAsState()
     val level by viewModel.level.collectAsState()
     val feedbackColor by viewModel.feedbackColor.collectAsState()
-    val colors = ColorJuego.entries.toList()
-
-    // NUEVO ESTADO: Observar el récord
+    val tonoASonar by viewModel.tonoASonar.collectAsState()
     val highRecord by viewModel.highRecord.collectAsState()
 
+    // 2. Lógica para reproducción de sonidos (Side Effect)
+    val context = LocalContext.current
+
+    // Usamos LaunchedEffect para manejar el evento de sonido una sola vez
+    LaunchedEffect(tonoASonar) {
+        val tonoId = tonoASonar
+        if (tonoId != null) {
+            // Utilizamos MediaPlayer para la reproducción, ya que es simple para un solo tono.
+            // Se recomienda SoundPool para un juego más complejo y rápido, pero MediaPlayer es suficiente aquí.
+            val mediaPlayer = MediaPlayer.create(context, tonoId)
+            mediaPlayer.setOnCompletionListener { mp ->
+                mp.release() // Liberar recursos
+                viewModel.sonidoReproducido() // Notificar al VM que el sonido ha terminado
+            }
+            mediaPlayer.start()
+        }
+    }
+
+
+    // 3. Renderizar la interfaz
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceAround
+        verticalArrangement = Arrangement.SpaceBetween
     ) {
-        // Mostrar el Récord
-        RecordDisplay(highRecord = highRecord)
+        // Marcadores y Estado
+        HeaderSection(gameState, level, highRecord)
 
-        // Marcador y Mensaje de Estado
-        ScoreAndStatus(gameState, level)
-
-        // Botones de Simón (Grid)
-        SimonButtonsGrid(
-            colors = colors,
-            enabled = gameState == GameState.JUGADOR_TURNO,
+        // Los 4 Botones de Color (La Matriz 2x2)
+        SimonButtonsMatrix(
+            gameState = gameState,
             feedbackColor = feedbackColor,
             onButtonClick = viewModel::manejarClickJugador
         )
@@ -101,64 +121,69 @@ fun SimonDiceScreen(viewModel: SimonViewModel = viewModel()) {
     }
 }
 
-/**
- * Muestra el récord (score y marca de tiempo).
- */
-@Composable
-fun RecordDisplay(highRecord: Record) {
-    // Formatear la marca de tiempo (dia y hora)
-    val formattedTimestamp = if (highRecord.timestamp > 0) {
-        DateFormat.format("dd/MM/yyyy HH:mm:ss", highRecord.timestamp).toString()
-    } else {
-        "Nunca"
-    }
 
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+// --- COMPONENTES DE LA UI ---
+
+@Composable
+fun HeaderSection(gameState: GameState, level: Int, record: com.example.simon_dice.data.Record) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        // Nivel Actual
         Text(
-            text = "RÉCORD: ${highRecord.score}",
-            fontSize = 24.sp,
+            text = "Nivel: $level",
+            fontSize = 32.sp,
             fontWeight = FontWeight.Bold,
-            color = Color(0xFFFFC107) // Amarillo para destacar
+            color = Color.White,
+            modifier = Modifier.padding(top = 16.dp)
         )
-        Spacer(modifier = Modifier.height(4.dp))
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Mensaje de Estado
+        val statusText = when (gameState) {
+            GameState.INICIO -> "Pulsa INICIAR para empezar"
+            GameState.SIMON_TURNO -> "Simón Muestra"
+            GameState.JUGADOR_TURNO -> "¡Tu Turno! (Nivel ${level})"
+            GameState.GAME_OVER -> "¡Juego Terminado! Nivel: ${level - 1}" // El nivel es el siguiente, el score es el anterior
+        }
+        val statusColor = if (gameState == GameState.GAME_OVER) Color.Red else Color.White
         Text(
-            text = "Fecha: $formattedTimestamp",
-            fontSize = 14.sp,
+            text = statusText,
+            fontSize = 20.sp,
+            color = statusColor
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Récord
+        val recordText = if (record.score > 0) {
+            // Formatear la marca de tiempo (Long) a fecha y hora legible
+            val dateString = DateFormat.format("dd/MM/yyyy HH:mm", Date(record.timestamp)).toString()
+            "Récord: ${record.score} (el $dateString)"
+        } else {
+            "Récord: 0"
+        }
+        Text(
+            text = recordText,
+            fontSize = 16.sp,
             color = Color.LightGray
         )
     }
-    Spacer(modifier = Modifier.height(16.dp))
 }
 
 @Composable
-fun ScoreAndStatus(gameState: GameState, level: Int) {
-    val statusText = when (gameState) {
-        GameState.INICIO -> "Pulsa INICIAR"
-        GameState.SIMON_TURNO -> "Simón Muestra"
-        GameState.JUGADOR_TURNO -> "¡Tu Turno!"
-        GameState.GAME_OVER -> "¡Has Perdido!"
-    }
-
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(16.dp)) {
-        Text(text = "Nivel: $level", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color.White)
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(text = statusText, fontSize = 20.sp, color = Color.LightGray)
-    }
-}
-
-@Composable
-fun SimonButtonsGrid(
-    colors: List<ColorJuego>,
-    enabled: Boolean,
+fun SimonButtonsMatrix(
+    gameState: GameState,
     feedbackColor: Int?,
     onButtonClick: (Int) -> Unit
 ) {
+    val colors = ColorJuego.entries // Todos los colores del enum
+    // Los botones solo están habilitados si es el turno del jugador.
+    val enabled = gameState == GameState.JUGADOR_TURNO
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .aspectRatio(1f), // Cuadrado
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
+            .aspectRatio(1f) // Cuadrado perfecto para los botones
     ) {
         Row(modifier = Modifier.weight(1f)) {
             SimonButton(colors[0], enabled, feedbackColor, onButtonClick) // VERDE
@@ -178,11 +203,13 @@ fun RowScope.SimonButton(
     feedbackColor: Int?,
     onClick: (Int) -> Unit
 ) {
+    // Verificar si este botón debe estar iluminado (simulando el parpadeo)
     val isIlluminated = feedbackColor == colorJuego.id
 
     // Usar colorResource para obtener el color desde R.color
     val baseColor = colorResource(id = colorJuego.colorRes)
 
+    // Si está iluminado, usamos el color base (alpha 1f), si no, un color más oscuro (alpha 0.5f)
     val colorToUse = if (isIlluminated) baseColor.copy(alpha = 1f) else baseColor.copy(alpha = 0.5f)
 
     Box(
@@ -191,6 +218,7 @@ fun RowScope.SimonButton(
             .fillMaxHeight()
             .padding(8.dp)
             .background(colorToUse, RoundedCornerShape(16.dp))
+            // Deshabilita el clickable si no está enabled (esto es para el turno del jugador)
             .let {
                 if (enabled) {
                     it.clickable { onClick(colorJuego.id) }
@@ -200,19 +228,26 @@ fun RowScope.SimonButton(
             }
     )
 }
+
 @Composable
 fun StartButton(gameState: GameState, onStartClick: () -> Unit) {
     val buttonText = when (gameState) {
         GameState.INICIO -> "INICIAR JUEGO"
-        GameState.GAME_OVER -> "REINICIAR JUEGO"
-        else -> "JUGANDO"
+        GameState.GAME_OVER -> "REINICIAR"
+        else -> "..." // En SIMON_TURNO y JUGADOR_TURNO, el botón está deshabilitado
     }
+
+    // El botón solo está habilitado en INICIO o GAME_OVER
+    val isEnabled = gameState == GameState.INICIO || gameState == GameState.GAME_OVER
 
     Button(
         onClick = onStartClick,
-        enabled = gameState == GameState.INICIO || gameState == GameState.GAME_OVER,
-        modifier = Modifier.padding(16.dp)
+        enabled = isEnabled,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(50.dp)
+            .padding(top = 8.dp)
     ) {
-        Text(text = buttonText, fontSize = 20.sp)
+        Text(buttonText, fontSize = 20.sp)
     }
 }
