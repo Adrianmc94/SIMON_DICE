@@ -2,6 +2,8 @@ package com.example.simon_dice
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.simon_dice.data.Record
+import com.example.simon_dice.data.RecordRepository
 import com.example.simon_dice.R
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -29,86 +31,91 @@ enum class ColorJuego(val id: Int, val colorRes: Int, val tonoRes: Int) {
     }
 }
 
-class SimonViewModel : ViewModel() {
+/**
+ * ViewModel que gestiona la lógica del juego y el estado.
+ * @property recordRepository Repositorio inyectado para la gestión del récord.
+ */
+class SimonViewModel(private val recordRepository: RecordRepository) : ViewModel() { // Constructor modificado para inyección
 
-    // ESTADOS OBSERVABLES (StateFlows)
-
-    // Estado principal del juego
+    // ESTADOS OBSERVABLES
     private val _gameState = MutableStateFlow<GameState>(GameState.INICIO)
     val gameState: StateFlow<GameState> = _gameState.asStateFlow()
 
-    // Secuencia que Simón ha generado (lista de IDs de ColorJuego)
     private val _simonSequence = MutableStateFlow<List<Int>>(emptyList())
-    // Expuesto como inmutable para el UI
     val simonSequence: StateFlow<List<Int>> = _simonSequence.asStateFlow()
 
-    // Input actual del jugador (lista de IDs de ColorJuego)
     private val _playerInput = MutableStateFlow<List<Int>>(emptyList())
     val playerInput: StateFlow<List<Int>> = _playerInput.asStateFlow()
 
-    // Nivel actual
     private val _level = MutableStateFlow(1)
     val level: StateFlow<Int> = _level.asStateFlow()
 
-    // Feedback visual: ID del color que debe estar iluminado en un momento dado
     private val _feedbackColor = MutableStateFlow<Int?>(null)
     val feedbackColor: StateFlow<Int?> = _feedbackColor.asStateFlow()
 
-    // Job para la reproducción de la secuencia (permite cancelación)
+    // NUEVO ESTADO DEL RÉCORD
+    private val _highRecord = MutableStateFlow(Record())
+    val highRecord: StateFlow<Record> = _highRecord.asStateFlow()
+
     private var simonJob: Job? = null
 
-
-    // FUNCIONES DE LÓGICA DE JUEGO
-
-    /**
-     * Inicia una nueva partida, reseteando las variables clave.
-     * Llamado desde INICIO o GAME_OVER.
-     */
-    fun iniciarJuego() {
-        simonJob?.cancel() // Cancela cualquier secuencia anterior
-        _simonSequence.value = emptyList()
-        _playerInput.value = emptyList()
-        _level.value = 1
-        ejecutarTurnoSimon() // Pasa directamente al turno de Simón
+    init {
+        // Cargar el récord al inicializar el ViewModel
+        loadRecord()
     }
 
     /**
-     * Fase 2: Simón añade un nuevo color y reproduce la secuencia completa.
+     * Carga el récord actual desde el Repositorio.
+     */
+    private fun loadRecord() {
+        viewModelScope.launch {
+            _highRecord.value = recordRepository.getRecord()
+        }
+    }
+
+    /**
+     * Inicia una nueva partida, reseteando las variables y comenzando el turno de Simón.
+     */
+    fun iniciarJuego() {
+        simonJob?.cancel()
+        _simonSequence.value = emptyList()
+        _playerInput.value = emptyList()
+        _level.value = 1
+        ejecutarTurnoSimon()
+    }
+
+    /**
+     * Genera un nuevo color, lo añade a la secuencia y la reproduce.
      */
     private fun ejecutarTurnoSimon() {
-        _gameState.value = GameState.SIMON_TURNO // Cambia el estado
-        _playerInput.value = emptyList() // Resetea el input del jugador
+        _gameState.value = GameState.SIMON_TURNO
+        _playerInput.value = emptyList() // Limpiar input del jugador
 
-        // Añade un nuevo color aleatorio a la secuencia
-        val nuevoColorId = Random.nextInt(4)
+        // Añadir nuevo color a la secuencia
+        val nuevoColorId = Random.nextInt(ColorJuego.entries.size)
         val nuevaSecuencia = _simonSequence.value + nuevoColorId
         _simonSequence.value = nuevaSecuencia
 
-        // Reproducir la secuencia de forma asíncrona (corrutinas)
+        // Reproducir la secuencia
         simonJob = viewModelScope.launch {
-            delay(1000L) // Pausa inicial antes de empezar
+            delay(1000L) // Pausa inicial
 
-            for (colorId in _simonSequence.value) {
-                // Iluminar y Sonar
-                _feedbackColor.value = colorId
-                delay(500L) // Tiempo de iluminación/sonido (500 ms)
-
-                // Pausa entre colores
-                _feedbackColor.value = null // Apagar
-                delay(250L) // Pausa entre elementos (250 ms)
+            for (colorId in nuevaSecuencia) {
+                _feedbackColor.value = colorId // Muestra el color
+                delay(500L) // Duración del flash
+                _feedbackColor.value = null
+                delay(100L) // Pausa entre colores
             }
 
-            // Fin de Reproducción: Pasar al turno del jugador
+            // Pasar al turno del jugador
             _gameState.value = GameState.JUGADOR_TURNO
         }
     }
 
     /**
-     * Fase 3: Maneja el clic de un botón de color por parte del jugador.
-     * @param colorId ID del color clicado (0, 1, 2, 3).
+     * Maneja el clic de un botón de color por parte del jugador.
      */
     fun manejarClickJugador(colorId: Int) {
-        // Ignorar clics si no es el turno del jugador
         if (_gameState.value != GameState.JUGADOR_TURNO) return
 
         // Dar feedback inmediato (iluminar botón)
@@ -131,22 +138,39 @@ class SimonViewModel : ViewModel() {
             if (nuevoInput.size == _simonSequence.value.size) {
                 // Acierto de ronda completa
                 viewModelScope.launch {
-                    // Muestra mensaje de exito y espera
-                    delay(500L)
+                    delay(500L) // Esperar antes de la siguiente ronda
 
                     // Completar la Ronda
                     _level.value++ // Incrementa el nivel
                     ejecutarTurnoSimon() // Regresa a la Fase 2 (siguiente ronda)
                 }
             }
-            // Si no es el último, simplemente espera el siguiente clic
         } else {
             // Condición de Derrota (Game Over)
             _gameState.value = GameState.GAME_OVER
+            // LÓGICA DE GUARDADO DEL RÉCORD
+            saveHighRecordIfNew()
         }
     }
 
-    // Función para tests
+    /**
+     * Comprueba si el nivel alcanzado es un nuevo récord y, si lo es, lo guarda.
+     */
+    private fun saveHighRecordIfNew() {
+        viewModelScope.launch {
+            val finalLevel = _level.value
+
+            // Llamamos al Repositorio para la lógica de guardado
+            val newRecordSet = recordRepository.updateRecordIfHigher(finalLevel, _highRecord.value)
+
+            // Si se ha guardado un nuevo récord, actualizamos el StateFlow
+            if (newRecordSet) {
+                _highRecord.value = recordRepository.getRecord()
+            }
+        }
+    }
+
+    // Función auxiliar para tests
     fun setGameState(state: GameState) {
         _gameState.value = state
     }
