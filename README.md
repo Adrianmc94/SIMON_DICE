@@ -66,6 +66,28 @@ El proyecto se gestionó siguiendo la metodología **GitFlow**, empleando ramas 
 
 ---
 
+## BASE DE DATOS (ROOM)
+
+Para evitar que el récord se borre al cerrar el juego, se ha sustituido el sistema de guardado simple por una base de datos **Room**, integrada directamente en el dispositivo.
+
+### Guardado permanente
+Las puntuaciones se almacenan en una base de datos local real, garantizando que los datos persistan incluso después de cerrar o reiniciar el juego, a diferencia de los archivos temporales.
+
+### Organización de datos (UserData)
+La información del jugador se guarda de forma estructurada mediante la entidad `UserData`, que incluye:
+- Nivel alcanzado.
+- Fecha exacta de la partida.
+
+Esto facilita la gestión y el mantenimiento de los datos.
+
+### Consultas rápidas
+Se utiliza un **DAO (Data Access Object)** para realizar consultas eficientes, permitiendo obtener de forma rápida la puntuación más alta almacenada en la base de datos.
+
+### Sin bloqueos
+Las operaciones de guardado y consulta se ejecutan en segundo plano mediante **corrutinas**, evitando bloqueos en el hilo principal y asegurando que el juego no se congele durante el guardado de la partida.
+
+
+
 ## 5. VISTAS DEL PROYECTO
 
 Se incluyen capturas de pantalla de la aplicación en ejecución.
