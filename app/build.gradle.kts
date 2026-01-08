@@ -1,6 +1,8 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    // Añadimos KSP para Room
+    id("com.google.devtools.ksp") version "1.9.20-1.0.14"
 }
 
 android {
@@ -40,7 +42,7 @@ android {
         compose = true
     }
     composeOptions {
-        // Coincide con la versión en libs.versions.toml
+        // Asegúrate de que esta versión sea compatible con tu versión de Kotlin
         kotlinCompilerExtensionVersion = "1.5.4"
     }
     packaging {
@@ -51,13 +53,18 @@ android {
 }
 
 dependencies {
+    // --- ROOM DEPENDENCIES ---
+    val room_version = "2.6.1"
+    implementation("androidx.room:room-runtime:$room_version")
+    implementation("androidx.room:room-ktx:$room_version")
+    ksp("androidx.room:room-compiler:$room_version")
 
-    // Core
+    // --- CORE & LIFECYCLE ---
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.appcompat)
 
-    // Compose
+    // --- COMPOSE ---
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)
@@ -65,16 +72,15 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
 
-    // ViewModel y LiveData/StateFlow
+    // --- VIEWMODEL ---
     implementation(libs.androidx.lifecycle.viewmodel.compose)
 
-
-    // Tests Unitarios
+    // --- TESTING ---
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
-    testImplementation(libs.testng)
+    testImplementation(libs.testng) //
 
-    // UI Tests
+    // --- UI TESTING ---
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

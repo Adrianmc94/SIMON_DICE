@@ -1,6 +1,5 @@
 package com.example.simon_dice
 
-import com.example.simon_dice.data.Record
 import com.example.simon_dice.data.RecordRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
