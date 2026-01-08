@@ -78,7 +78,7 @@ dependencies {
     // --- TESTING ---
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
-    testImplementation(libs.testng)
+    testImplementation(libs.testng) //
 
     // --- UI TESTING ---
     androidTestImplementation(libs.androidx.test.ext.junit)
