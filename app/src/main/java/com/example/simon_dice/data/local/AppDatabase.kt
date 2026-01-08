@@ -4,9 +4,9 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
-import com.example.simon_dice.data.Record
+import com.example.simon_dice.data.UserRecord
 
-@Database(entities = [Record::class], version = 1, exportSchema = false)
+@Database(entities = [UserRecord::class], version = 1, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun recordDao(): RecordDao
@@ -22,7 +22,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "simon_dice_database"
                 )
-                    .allowMainThreadQueries() // Permite consultas en el hilo principal para simplificar tu tarea de clase
+                    .allowMainThreadQueries() // Para facilitar tu tarea escolar
                     .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance
