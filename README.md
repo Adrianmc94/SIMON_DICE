@@ -70,7 +70,10 @@ El proyecto se gestionó siguiendo la metodología **GitFlow**, empleando ramas 
 
 Se incluyen capturas de pantalla de la aplicación en ejecución.
 
-<img width="639" height="893" alt="Captura de pantalla de la aplicación Simón Dice" src="https://github.com/user-attachments/assets/448cbcc1-ff86-4040-b99d-3a91483a8741" />
+<img width="522" height="951" alt="Captura desde 2026-01-08 09-04-15" src="https://github.com/user-attachments/assets/3de8f947-6afd-4cb6-a260-899d95becd09" />
+
+
+<img width="522" height="951" alt="Captura desde 2026-01-08 09-03-36" src="https://github.com/user-attachments/assets/ee97d47d-71b3-4bc7-a524-6ade4b367456" />
 
 ---
 
