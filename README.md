@@ -87,6 +87,13 @@ Se utiliza un **DAO (Data Access Object)** para realizar consultas eficientes, p
 Las operaciones de guardado y consulta se ejecutan en segundo plano mediante **corrutinas**, evitando bloqueos en el hilo principal y asegurando que el juego no se congele durante el guardado de la partida.
 
 
+**Triple Persistencia de datos**:
+1.  **Room**: Almacenamiento local estructurado en SQLite para el historial de récords.
+2.  **SharedPreferences**: Guardado rápido del récord máximo para persistencia inmediata.
+3.  **MongoDB (Cloud)**: Sincronización simulada en la nube mediante una capa de servicio remoto.
+
+*Arquitectura limpia con separación de responsabilidades mediante el patrón Repository.*
+
 
 ## 5. VISTAS DEL PROYECTO
 
