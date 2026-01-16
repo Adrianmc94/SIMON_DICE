@@ -88,4 +88,5 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 
+    implementation("org.mongodb:mongodb-driver-kotlin-coroutine:4.11.0")
 }
