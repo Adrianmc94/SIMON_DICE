@@ -1,7 +1,6 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    // Añadimos KSP para Room
     id("com.google.devtools.ksp") version "1.9.20-1.0.14"
 }
 
@@ -20,6 +19,8 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+        // Activamos MultiDex por si las librerías de Room/Compose crecen mucho
+        multiDexEnabled = true
     }
 
     buildTypes {
@@ -42,12 +43,15 @@ android {
         compose = true
     }
     composeOptions {
-        // Asegúrate de que esta versión sea compatible con tu versión de Kotlin
         kotlinCompilerExtensionVersion = "1.5.4"
     }
     packaging {
         resources {
+            // Reglas para evitar errores de duplicados en el empaquetado
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += "META-INF/DEPENDENCIES"
+            excludes += "META-INF/LICENSE*"
+            excludes += "META-INF/NOTICE*"
         }
     }
 }
@@ -75,10 +79,12 @@ dependencies {
     // --- VIEWMODEL ---
     implementation(libs.androidx.lifecycle.viewmodel.compose)
 
+    // --- MULTIDEX ---
+    implementation("androidx.multidex:multidex:2.0.1")
+
     // --- TESTING ---
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
-    testImplementation(libs.testng) //
 
     // --- UI TESTING ---
     androidTestImplementation(libs.androidx.test.ext.junit)
@@ -87,6 +93,4 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
-
-    implementation("org.mongodb:mongodb-driver-kotlin-coroutine:4.11.0")
 }
